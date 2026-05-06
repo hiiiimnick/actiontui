@@ -6,14 +6,14 @@ pub struct Repository {
     pub repo: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct Workflow {
     pub id: u64,
     pub name: String,
     pub state: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct WorkflowResponse {
     pub total_count: u32,
     pub workflows: Vec<Workflow>,

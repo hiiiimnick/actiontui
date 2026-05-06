@@ -4,17 +4,12 @@ use ratatui::{
 };
 
 use crate::tui::{
-    app::{App, CurrentScreen},
+    app::App,
     components::{dispatch, logs, runlist, workflowlist},
 };
 
 pub fn ui(app: &App, frame: &mut Frame) {
-    match app.current_screen {
-        CurrentScreen::RepoList => {}
-        CurrentScreen::WorkflowManager => {
-            workflow_manager_layout(app, frame);
-        }
-    }
+    workflow_manager_layout(app, frame);
 }
 fn workflow_manager_layout(app: &App, frame: &mut Frame) {
     let main_rects = Layout::default()

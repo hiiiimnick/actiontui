@@ -5,33 +5,35 @@ use ratatui::Terminal;
 use ratatui::backend::Backend;
 
 use crate::Config;
+use crate::domain::WorkflowResponse;
 use crate::tui::ui;
 
 #[derive(Debug)]
-pub enum CurrentFocus {
-    RepoSelector,
-    WorkflowSelector,
-    WorkflowRunSelector,
-    StepSelector,
+pub enum Mode {
+    Navigation,
+    Input,
 }
 
-#[derive(Debug)]
-pub enum CurrentScreen {
-    RepoList,
-    WorkflowManager,
+#[derive(Debug, Eq, PartialEq)]
+pub enum CurrentFocus {
+    Workflow,
+    WorkflowRun,
+    Steps,
 }
 
 #[derive(Debug, Default)]
 pub struct App {
     pub cfg: Config,
     pub current_focus: CurrentFocus,
-    pub current_screen: CurrentScreen,
+
+    pub workflow_response: WorkflowResponse,
 }
 
 impl App {
-    pub fn new(cfg: Config) -> App {
+    pub fn new(cfg: Config, workflows: WorkflowResponse) -> App {
         App {
-            cfg: cfg,
+            cfg,
+            workflow_response: workflows,
             ..Default::default()
         }
     }
@@ -57,11 +59,6 @@ impl App {
 
 impl ::std::default::Default for CurrentFocus {
     fn default() -> Self {
-        Self::RepoSelector
-    }
-}
-impl ::std::default::Default for CurrentScreen {
-    fn default() -> Self {
-        Self::WorkflowManager
+        Self::Workflow
     }
 }

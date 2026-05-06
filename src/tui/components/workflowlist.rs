@@ -1,19 +1,33 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Style,
     text::Line,
-    widgets::{Block, Borders},
+    widgets::{Block, Borders, List, ListItem},
 };
 
-use crate::tui::app::App;
+use crate::tui::{
+    app::{App, CurrentFocus},
+    util::map_block_color,
+};
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .style(Style::default())
-        .title(Line::from("[1]").left_aligned())
-        .title(Line::from("Workflows").centered());
+    let list_items: Vec<ListItem> = app
+        .workflow_response
+        .workflows
+        .iter()
+        .map(|workflow| {
+            let name = workflow.name.clone();
+            ListItem::new(format!("{}", name))
+        })
+        .collect();
 
-    frame.render_widget(block, area);
+    let list = List::new(list_items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .style(map_block_color(app, CurrentFocus::Workflow))
+            .title(Line::from("[1]").left_aligned())
+            .title(Line::from("Workflows").centered()),
+    );
+
+    frame.render_widget(list, area);
 }
