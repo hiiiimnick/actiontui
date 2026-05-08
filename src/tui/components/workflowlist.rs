@@ -12,7 +12,6 @@ use crate::tui::{
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let list_items: Vec<ListItem> = app
-        .workflow_response
         .workflows
         .iter()
         .map(|workflow| {

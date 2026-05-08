@@ -5,7 +5,7 @@ use ratatui::Terminal;
 use ratatui::backend::Backend;
 
 use crate::Config;
-use crate::domain::WorkflowResponse;
+use crate::domain::models::Workflow;
 use crate::tui::ui;
 
 #[derive(Debug)]
@@ -26,14 +26,14 @@ pub struct App {
     pub cfg: Config,
     pub current_focus: CurrentFocus,
 
-    pub workflow_response: WorkflowResponse,
+    pub workflows: Vec<Workflow>,
 }
 
 impl App {
-    pub fn new(cfg: Config, workflows: WorkflowResponse) -> App {
+    pub fn new(cfg: Config, workflows: Vec<Workflow>) -> App {
         App {
             cfg,
-            workflow_response: workflows,
+            workflows,
             ..Default::default()
         }
     }
