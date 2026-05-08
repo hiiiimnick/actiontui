@@ -8,10 +8,10 @@ use crate::tui::{
     components::{dispatch, logs, runlist, workflowlist},
 };
 
-pub fn ui(app: &App, frame: &mut Frame) {
+pub fn ui(app: &mut App, frame: &mut Frame) {
     workflow_manager_layout(app, frame);
 }
-fn workflow_manager_layout(app: &App, frame: &mut Frame) {
+fn workflow_manager_layout(app: &mut App, frame: &mut Frame) {
     let main_rects = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Max(30), Constraint::Min(40)])

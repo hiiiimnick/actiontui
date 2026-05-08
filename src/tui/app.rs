@@ -1,23 +1,27 @@
-use std::io::{self};
+use std::io;
 
-use crossterm::event::{self, Event, KeyCode};
+use color_eyre::eyre::Error;
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
+use ratatui::widgets::ListState;
 
 use crate::Config;
 use crate::domain::models::Workflow;
 use crate::tui::ui;
 
-#[derive(Debug)]
+#[derive(Debug, Default, Eq, PartialEq)]
 pub enum Mode {
+    #[default]
     Navigation,
     Input,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Default)]
 pub enum CurrentFocus {
-    Workflow,
-    WorkflowRun,
+    #[default]
+    Workflows,
+    Runs,
     Steps,
 }
 
@@ -25,8 +29,10 @@ pub enum CurrentFocus {
 pub struct App {
     pub cfg: Config,
     pub current_focus: CurrentFocus,
+    pub mode: Mode,
 
     pub workflows: Vec<Workflow>,
+    pub workflow_state: ListState,
 }
 
 impl App {
@@ -34,6 +40,7 @@ impl App {
         App {
             cfg,
             workflows,
+            workflow_state: ListState::default(),
             ..Default::default()
         }
     }
@@ -44,21 +51,58 @@ impl App {
     {
         loop {
             terminal.draw(|f| ui::ui(self, f))?;
+
             if let Event::Key(key) = event::read()? {
-                dbg!(key.code);
-                match key.code {
-                    KeyCode::Char('q') => {
-                        return Ok(true);
+                match self.handle_key_input(key) {
+                    Ok(quit) => {
+                        if quit {
+                            return Ok(true);
+                        }
                     }
-                    _ => {}
+                    Err(error) => return Err(error),
                 }
             }
         }
     }
-}
 
-impl ::std::default::Default for CurrentFocus {
-    fn default() -> Self {
-        Self::Workflow
+    fn handle_key_input(&mut self, key: KeyEvent) -> io::Result<bool> {
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return Ok(true);
+        }
+        match self.mode {
+            Mode::Input => {}
+            Mode::Navigation => {
+                if key.code == KeyCode::Char('q') {
+                    return Ok(true);
+                }
+
+                match self.current_focus {
+                    CurrentFocus::Workflows => {
+                        Self::navigate_list(key, &mut self.workflow_state);
+                    }
+                    CurrentFocus::Runs => {}
+                    CurrentFocus::Steps => {}
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    fn navigate_list(key: KeyEvent, list_state: &mut ListState) {
+        match key.code {
+            KeyCode::Char('k') => {
+                list_state.select_previous();
+            }
+            KeyCode::Char('j') => {
+                list_state.select_next();
+            }
+            KeyCode::Char('K') => {
+                list_state.select_first();
+            }
+            KeyCode::Char('J') => {
+                list_state.select_last();
+            }
+            _ => {}
+        }
     }
 }
