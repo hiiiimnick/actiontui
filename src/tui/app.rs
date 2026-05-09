@@ -1,108 +1,129 @@
-use std::io;
-
 use color_eyre::eyre::Error;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
-use ratatui::widgets::ListState;
+use ratatui::widgets::{List, ListState};
 
 use crate::Config;
 use crate::domain::models::Workflow;
+use crate::domain::{Repository, WorkflowRepository, WorkflowRun};
+use crate::infrastructure::HttpWorkflowRepository;
 use crate::tui::ui;
 
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Mode {
-    #[default]
     Navigation,
     Input,
 }
 
-#[derive(Debug, Eq, PartialEq, Default)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum CurrentFocus {
-    #[default]
     Workflows,
     Runs,
     Steps,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct App {
     pub cfg: Config,
+    pub repo: Repository,
     pub current_focus: CurrentFocus,
     pub mode: Mode,
 
     pub workflows: Vec<Workflow>,
     pub workflow_state: ListState,
+
+    pub selected_workflow: Option<Workflow>,
+    pub runs: Vec<WorkflowRun>,
+    pub run_state: ListState,
 }
 
 impl App {
-    pub fn new(cfg: Config, workflows: Vec<Workflow>) -> App {
-        App {
-            cfg,
-            workflows,
-            workflow_state: ListState::default(),
-            ..Default::default()
+    pub fn new(cfg: Config, repo: Repository) -> Result<App, Error> {
+        let workflow_repo = HttpWorkflowRepository::new(cfg.clone());
+        let workflows = workflow_repo.get_workflows(&repo)?;
+        let mut workflow_state = ListState::default();
+        if !workflows.is_empty() {
+            workflow_state.select(Some(0));
         }
+
+        Ok(App {
+            cfg,
+            repo,
+            workflows,
+            workflow_state,
+            current_focus: CurrentFocus::Workflows,
+            mode: Mode::Navigation,
+            selected_workflow: None,
+            run_state: ListState::default(),
+            runs: Vec::new(),
+        })
     }
 
-    pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> io::Result<bool>
+    pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<bool, Error>
     where
-        io::Error: From<B::Error>,
+        Error: From<B::Error>,
     {
         loop {
             terminal.draw(|f| ui::ui(self, f))?;
 
-            if let Event::Key(key) = event::read()? {
-                match self.handle_key_input(key) {
-                    Ok(quit) => {
-                        if quit {
-                            return Ok(true);
-                        }
-                    }
-                    Err(error) => return Err(error),
-                }
+            if let Event::Key(key) = event::read()?
+                && self.handle_key_input(key)?
+            {
+                return Ok(true);
             }
         }
     }
 
-    fn handle_key_input(&mut self, key: KeyEvent) -> io::Result<bool> {
+    fn handle_key_input(&mut self, key: KeyEvent) -> Result<bool, Error> {
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             return Ok(true);
         }
         match self.mode {
             Mode::Input => {}
-            Mode::Navigation => {
-                if key.code == KeyCode::Char('q') {
-                    return Ok(true);
-                }
-
-                match self.current_focus {
-                    CurrentFocus::Workflows => {
-                        Self::navigate_list(key, &mut self.workflow_state);
-                    }
-                    CurrentFocus::Runs => {}
-                    CurrentFocus::Steps => {}
-                }
-            }
+            Mode::Navigation => return self.handle_key_input_navigation(key),
         }
         Ok(false)
     }
 
-    fn navigate_list(key: KeyEvent, list_state: &mut ListState) {
-        match key.code {
-            KeyCode::Char('k') => {
-                list_state.select_previous();
-            }
-            KeyCode::Char('j') => {
-                list_state.select_next();
-            }
-            KeyCode::Char('K') => {
-                list_state.select_first();
-            }
-            KeyCode::Char('J') => {
-                list_state.select_last();
-            }
-            _ => {}
+    fn handle_key_input_navigation(&mut self, key: KeyEvent) -> Result<bool, Error> {
+        if key.code == KeyCode::Char('q') {
+            return Ok(true);
         }
+
+        match self.current_focus {
+            CurrentFocus::Workflows => {
+                navigate_list(key, &mut self.workflow_state);
+                match key.code {
+                    KeyCode::Char('r') => {
+                        self.workflows = HttpWorkflowRepository::new(self.cfg.clone())
+                            .get_workflows(&self.repo)?;
+                    }
+                    KeyCode::Enter => {}
+                    _ => {}
+                }
+            }
+            CurrentFocus::Runs => {}
+            CurrentFocus::Steps => {}
+        }
+        Ok(false)
+    }
+}
+
+fn navigate_list(key: KeyEvent, list_state: &mut ListState) {
+    match key.code {
+        KeyCode::Char('k') | KeyCode::Up => {
+            list_state.select_previous();
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            list_state.select_next();
+        }
+        KeyCode::Char('K') | KeyCode::Home => {
+            list_state.select_first();
+        }
+        KeyCode::Char('J') | KeyCode::End => {
+            list_state.select_last();
+        }
+        _ => {}
     }
 }

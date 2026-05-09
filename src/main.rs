@@ -24,11 +24,8 @@ fn main() -> Result<()> {
 
     let cfg: Config = confy::load("actiontui", "config")?;
     let repo = Repository::parse_current()?;
-    
-    let workflow_repo = HttpWorkflowRepository::new(cfg.clone());
-    let workflows = workflow_repo.get_workflows(&repo)?;
 
-    let mut app = App::new(cfg, workflows);
+    let mut app = App::new(cfg, repo)?;
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();

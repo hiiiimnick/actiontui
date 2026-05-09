@@ -6,6 +6,7 @@ use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use serde::Deserialize;
 
+#[derive(Default, Debug)]
 pub struct HttpWorkflowRepository {
     cfg: Config,
     client: Client,
@@ -107,7 +108,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
             "ref": reference
         });
 
-        let res = self.client
+        let res = self
+            .client
             .post(url)
             .header(USER_AGENT, "actiontui")
             .header(AUTHORIZATION, format!("Bearer {}", self.cfg.pat))
@@ -116,7 +118,10 @@ impl WorkflowRepository for HttpWorkflowRepository {
             .send()?;
 
         if !res.status().is_success() {
-            return Err(color_eyre::eyre::eyre!("Failed to trigger workflow: {}", res.text()?));
+            return Err(color_eyre::eyre::eyre!(
+                "Failed to trigger workflow: {}",
+                res.text()?
+            ));
         }
 
         Ok(())
