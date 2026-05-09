@@ -2,7 +2,7 @@ use color_eyre::eyre::Error;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
-use ratatui::widgets::{List, ListState};
+use ratatui::widgets::ListState;
 
 use crate::Config;
 use crate::domain::models::Workflow;
@@ -87,8 +87,18 @@ impl App {
     }
 
     fn handle_key_input_navigation(&mut self, key: KeyEvent) -> Result<bool, Error> {
-        if key.code == KeyCode::Char('q') {
-            return Ok(true);
+        match key.code {
+            KeyCode::Char('q') => {
+                return Ok(true);
+            }
+            KeyCode::Char('1') => {
+                self.current_focus = CurrentFocus::Workflows;
+                self.run_state = ListState::default();
+            }
+            KeyCode::Char('2') => {
+                self.current_focus = CurrentFocus::Runs;
+            }
+            _ => {}
         }
 
         match self.current_focus {
@@ -99,11 +109,23 @@ impl App {
                         self.workflows = HttpWorkflowRepository::new(self.cfg.clone())
                             .get_workflows(&self.repo)?;
                     }
-                    KeyCode::Enter => {}
+                    KeyCode::Enter => {
+                        if let Some(index) = self.workflow_state.selected()
+                            && let Some(workflow) = self.workflows.get(index)
+                        {
+                            self.selected_workflow = Some(workflow.clone());
+                            self.runs = HttpWorkflowRepository::new(self.cfg.clone())
+                                .get_runs(&self.repo, workflow.id)?;
+                            self.current_focus = CurrentFocus::Runs;
+                            self.workflow_state = ListState::default();
+                        }
+                    }
                     _ => {}
                 }
             }
-            CurrentFocus::Runs => {}
+            CurrentFocus::Runs => {
+                navigate_list(key, &mut self.run_state);
+            }
             CurrentFocus::Steps => {}
         }
         Ok(false)

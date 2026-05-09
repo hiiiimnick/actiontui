@@ -12,12 +12,19 @@ use crate::tui::{
 };
 
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
+    let selected_workflow = app.selected_workflow.as_ref();
     let list_items: Vec<ListItem> = app
         .workflows
         .iter()
         .map(|workflow| {
             let name = workflow.name.clone();
-            ListItem::new(name.to_string())
+
+            if let Some(selected) = selected_workflow
+                && selected == workflow
+            {
+                return ListItem::new(format!("> {}", name)).style(Color::Yellow);
+            }
+            ListItem::new(name)
         })
         .collect();
 
@@ -30,8 +37,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
                 .title(Line::from("Workflows").centered()),
         )
         .style(Color::White)
-        .highlight_style(Modifier::REVERSED)
-        .highlight_symbol("> ");
+        .highlight_style(Modifier::REVERSED);
 
     frame.render_stateful_widget(list, area, &mut app.workflow_state);
 }
