@@ -15,7 +15,7 @@ pub fn map_block_color(app: &App, expected: CurrentFocus) -> Style {
 
 pub fn map_status_to_span(status: String, conclusion: Option<String>) -> Span<'static> {
     match status.as_str() {
-        "queued" | "pending" | "requested" => Span::styled("󰃮 ", Style::default().fg(Color::White)),
+        "queued" | "pending" | "requested" => Span::styled(" ", Style::default().fg(Color::White)),
         "in_progress" => Span::styled("", Style::default().fg(Color::White)),
         "action_required" | "waiting" => Span::styled(" ", Style::default().fg(Color::Yellow)),
         "completed" => {

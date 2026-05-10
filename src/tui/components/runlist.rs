@@ -1,16 +1,17 @@
-use std::fmt::format;
-
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem},
 };
 
-use crate::tui::{
-    app::{App, CurrentFocus},
-    util::{map_block_color, map_status_to_span},
+use crate::{
+    domain::Run,
+    tui::{
+        app::{App, CurrentFocus},
+        util::{map_block_color, map_status_to_span},
+    },
 };
 
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
@@ -20,25 +21,10 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .iter()
         .map(|run| {
             let status = map_status_to_span(run.status.clone(), run.conclusion.clone());
-            let time = run.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
-            let padding_total = area_width.saturating_sub(
-                5_usize + run.display_title.len() + run.head_branch.len() + time.len(),
-            );
-
-            let padding_status = " ".repeat((5_usize).saturating_sub(status.content.len()));
-            let padding_per_item = " ".repeat(padding_total / 2);
 
             ListItem::new(Line::from(vec![
                 status,
-                Span::raw(format!(
-                    "{}{}{}{}{}{}",
-                    padding_status,
-                    run.display_title,
-                    padding_per_item,
-                    run.head_branch,
-                    padding_per_item,
-                    time,
-                )),
+                Span::raw(format_line(run, area_width)),
             ]))
         })
         .collect();
@@ -59,4 +45,34 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .highlight_style(Style::default().bg(Color::White).fg(Color::Black));
 
     frame.render_stateful_widget(list, area, &mut app.run_state);
+}
+
+fn format_line(run: &Run, line_size: usize) -> String {
+    let time = run.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
+    let title_padding = " ".repeat(
+        (line_size / 2)
+            .saturating_sub(run.head_branch.len() / 2)
+            .saturating_sub(run.display_title.len())
+            .saturating_sub(5),
+    );
+    let mut branch_padding = " ".repeat(
+        (line_size / 2)
+            .saturating_sub(run.head_branch.len() / 2)
+            .saturating_sub(time.len()),
+    );
+    let total_len = 5
+        + run.display_title.len()
+        + title_padding.len()
+        + run.head_branch.len()
+        + branch_padding.len()
+        + time.len();
+
+    if total_len >= line_size {
+        let to_remove = total_len - line_size + 1;
+        branch_padding.truncate(branch_padding.len().saturating_sub(to_remove));
+    }
+    format!(
+        "  {}{}{}{}{}",
+        run.display_title, title_padding, run.head_branch, branch_padding, time
+    )
 }
