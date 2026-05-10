@@ -5,7 +5,8 @@ use ratatui::backend::Backend;
 use ratatui::widgets::ListState;
 
 use crate::Config;
-use crate::domain::models::Workflow;
+use crate::domain::models::job::WorkflowJob;
+use crate::domain::models::{Workflow, workflow};
 use crate::domain::{Repository, WorkflowRepository, WorkflowRun};
 use crate::infrastructure::HttpWorkflowRepository;
 use crate::tui::ui;
@@ -36,6 +37,9 @@ pub struct App {
     pub selected_workflow: Option<Workflow>,
     pub runs: Vec<WorkflowRun>,
     pub run_state: ListState,
+
+    pub selected_run: Option<WorkflowRun>,
+    pub jobs: Vec<WorkflowJob>,
 }
 
 impl App {
@@ -57,6 +61,8 @@ impl App {
             selected_workflow: None,
             run_state: ListState::default(),
             runs: Vec::new(),
+            selected_run: None,
+            jobs: Vec::new(),
         })
     }
 
@@ -125,6 +131,16 @@ impl App {
             }
             CurrentFocus::Runs => {
                 navigate_list(key, &mut self.run_state);
+                match key.code {
+                    KeyCode::Char('r') => {
+                        if let Some(workflow) = &self.selected_workflow {
+                            self.runs = HttpWorkflowRepository::new(self.cfg.clone())
+                                .get_runs(&self.repo, workflow.id)?;
+                        }
+                    }
+                    KeyCode::Enter => {}
+                    _ => {}
+                }
             }
             CurrentFocus::Steps => {}
         }

@@ -2,13 +2,16 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::{Block, Borders, List, ListItem},
 };
 
-use crate::tui::{
-    app::{App, CurrentFocus},
-    util::map_block_color,
+use crate::{
+    domain::models::workflow,
+    tui::{
+        app::{App, CurrentFocus},
+        util::{map_block_color, map_status_to_span},
+    },
 };
 
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
@@ -17,7 +20,10 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .iter()
         .map(|run| {
             let name = run.name.clone();
-            ListItem::new(name.to_string())
+            ListItem::new(Line::from(vec![
+                map_status_to_span(run.status.clone(), run.conclusion.clone()),
+                Span::raw(name),
+            ]))
         })
         .collect();
 
@@ -33,8 +39,8 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
 
     let list = List::new(list_items)
         .block(block)
-        .style(Color::White)
-        .highlight_style(Modifier::REVERSED);
+        .style(Style::default().fg(Color::White))
+        .highlight_style(Style::default().bg(Color::White).fg(Color::Black));
 
     frame.render_stateful_widget(list, area, &mut app.run_state);
 }

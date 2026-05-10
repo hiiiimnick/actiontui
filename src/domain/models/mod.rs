@@ -1,3 +1,4 @@
+pub mod job;
 pub mod repository;
 pub mod run;
 pub mod workflow;
