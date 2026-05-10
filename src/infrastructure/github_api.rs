@@ -1,6 +1,7 @@
 use crate::Config;
-use crate::domain::models::{Repository, Workflow, WorkflowRun};
+use crate::domain::models::{Repository, Run, Workflow};
 use crate::domain::repositories::WorkflowRepository;
+use chrono::{Date, DateTime, Utc};
 use color_eyre::Result;
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
@@ -54,6 +55,9 @@ struct GithubWorkflowRun {
     conclusion: Option<String>,
     workflow_id: u64,
     html_url: String,
+    created_at: DateTime<Utc>,
+    display_title: String,
+    head_branch: String,
 }
 
 impl WorkflowRepository for HttpWorkflowRepository {
@@ -76,7 +80,7 @@ impl WorkflowRepository for HttpWorkflowRepository {
             .collect())
     }
 
-    fn get_runs(&self, repo: &Repository, workflow_id: u64) -> Result<Vec<WorkflowRun>> {
+    fn get_runs(&self, repo: &Repository, workflow_id: u64) -> Result<Vec<Run>> {
         let url = format!(
             "https://api.{}/repos/{}/{}/actions/workflows/{}/runs",
             self.cfg.url, repo.owner, repo.repo, workflow_id
@@ -87,13 +91,16 @@ impl WorkflowRepository for HttpWorkflowRepository {
         Ok(response
             .workflow_runs
             .into_iter()
-            .map(|r| WorkflowRun {
-                id: r.id,
-                name: r.name.unwrap_or_default(),
-                status: r.status,
-                conclusion: r.conclusion,
-                workflow_id: r.workflow_id,
-                html_url: r.html_url,
+            .map(|run| Run {
+                id: run.id,
+                name: run.name.unwrap_or_default(),
+                status: run.status,
+                conclusion: run.conclusion,
+                workflow_id: run.workflow_id,
+                html_url: run.html_url,
+                created_at: DateTime::from(run.created_at),
+                display_title: run.display_title,
+                head_branch: run.head_branch,
             })
             .collect())
     }

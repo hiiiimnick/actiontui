@@ -5,9 +5,7 @@ use ratatui::backend::Backend;
 use ratatui::widgets::ListState;
 
 use crate::Config;
-use crate::domain::models::job::WorkflowJob;
-use crate::domain::models::{Workflow, workflow};
-use crate::domain::{Repository, WorkflowRepository, WorkflowRun};
+use crate::domain::{Job, Repository, Run, Workflow, WorkflowRepository};
 use crate::infrastructure::HttpWorkflowRepository;
 use crate::tui::ui;
 
@@ -35,11 +33,11 @@ pub struct App {
     pub workflow_state: ListState,
 
     pub selected_workflow: Option<Workflow>,
-    pub runs: Vec<WorkflowRun>,
+    pub runs: Vec<Run>,
     pub run_state: ListState,
 
-    pub selected_run: Option<WorkflowRun>,
-    pub jobs: Vec<WorkflowJob>,
+    pub selected_run: Option<Run>,
+    pub jobs: Vec<Job>,
 }
 
 impl App {

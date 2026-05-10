@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use ratatui::{
     Frame,
     layout::Rect,
@@ -6,23 +8,37 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem},
 };
 
-use crate::{
-    domain::models::workflow,
-    tui::{
-        app::{App, CurrentFocus},
-        util::{map_block_color, map_status_to_span},
-    },
+use crate::tui::{
+    app::{App, CurrentFocus},
+    util::{map_block_color, map_status_to_span},
 };
 
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
+    let area_width = area.width as usize;
     let list_items: Vec<ListItem> = app
         .runs
         .iter()
         .map(|run| {
-            let name = run.name.clone();
+            let status = map_status_to_span(run.status.clone(), run.conclusion.clone());
+            let time = run.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
+            let padding_total = area_width.saturating_sub(
+                5_usize + run.display_title.len() + run.head_branch.len() + time.len(),
+            );
+
+            let padding_status = " ".repeat((5_usize).saturating_sub(status.content.len()));
+            let padding_per_item = " ".repeat(padding_total / 2);
+
             ListItem::new(Line::from(vec![
-                map_status_to_span(run.status.clone(), run.conclusion.clone()),
-                Span::raw(name),
+                status,
+                Span::raw(format!(
+                    "{}{}{}{}{}{}",
+                    padding_status,
+                    run.display_title,
+                    padding_per_item,
+                    run.head_branch,
+                    padding_per_item,
+                    time,
+                )),
             ]))
         })
         .collect();

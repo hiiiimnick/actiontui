@@ -1,5 +1,5 @@
-#[derive(Debug, Clone, Default)]
-pub struct WorkflowJob {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Job {
     pub id: u64,
     pub name: String,
     pub status: String,
