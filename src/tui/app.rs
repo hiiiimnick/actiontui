@@ -5,6 +5,7 @@ use ratatui::backend::Backend;
 use ratatui::widgets::ListState;
 
 use crate::Config;
+use crate::domain::models::run;
 use crate::domain::{Job, Repository, Run, Workflow, WorkflowRepository};
 use crate::infrastructure::HttpWorkflowRepository;
 use crate::tui::ui;
@@ -19,7 +20,7 @@ pub enum Mode {
 pub enum CurrentFocus {
     Workflows,
     Runs,
-    Steps,
+    Jobs,
 }
 
 #[derive(Debug)]
@@ -136,7 +137,14 @@ impl App {
                                 .get_runs(&self.repo, workflow.id)?;
                         }
                     }
-                    KeyCode::Enter => {}
+                    KeyCode::Enter => {
+                        if let Some(index) = self.run_state.selected()
+                            && let Some(run) = self.runs.get(index)
+                        {
+                            self.selected_run = Some(run.clone());
+                            self.jobs = HttpWorkflowRepository::new(self.cfg.clone()).ge
+                        }
+                    }
                     _ => {}
                 }
             }

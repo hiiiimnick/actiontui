@@ -1,7 +1,10 @@
+use std::fmt::format;
+
 use crate::Config;
+use crate::domain::Job;
 use crate::domain::models::{Repository, Run, Workflow};
 use crate::domain::repositories::WorkflowRepository;
-use chrono::{Date, DateTime, Utc};
+use chrono::{DateTime, Utc};
 use color_eyre::Result;
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
@@ -60,6 +63,16 @@ struct GithubWorkflowRun {
     head_branch: String,
 }
 
+#[derive(Deserialize)]
+struct GithubWorkflowRunJob {
+    
+}
+
+#[derive(Deserialize)]
+struct GithubJobResponse {
+    jobs: Vec<GithubWorkflowRunJob>
+}
+
 impl WorkflowRepository for HttpWorkflowRepository {
     fn get_workflows(&self, repo: &Repository) -> Result<Vec<Workflow>> {
         let url = format!(
@@ -103,6 +116,15 @@ impl WorkflowRepository for HttpWorkflowRepository {
                 head_branch: run.head_branch,
             })
             .collect())
+    }
+
+    fn get_jobs(&self, repo: &Repository, run_id: u64) -> Result<Vec<Job>> {
+        let url = format!(
+            "https://api.{}/repos/{}/{}/actions/runs/{}/jobs",
+            self.cfg.url, repo.owner, repo.repo, run_id
+        );
+
+        let response: 
     }
 
     fn trigger_workflow(&self, repo: &Repository, workflow_id: u64, reference: &str) -> Result<()> {
