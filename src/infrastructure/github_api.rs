@@ -1,11 +1,12 @@
 use std::fmt::format;
 
 use crate::Config;
-use crate::domain::Job;
-use crate::domain::models::{Repository, Run, Workflow};
+use crate::domain::models::{Repository, Run, Workflow, step};
 use crate::domain::repositories::WorkflowRepository;
+use crate::domain::{Job, Step};
 use chrono::{DateTime, Utc};
 use color_eyre::Result;
+use color_eyre::eyre::Ok;
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use serde::Deserialize;
@@ -64,13 +65,30 @@ struct GithubWorkflowRun {
 }
 
 #[derive(Deserialize)]
+struct GithubWorkflowRunJobStep {
+    name: String,
+    status: String,
+    conclusion: Option<String>,
+    number: u64,
+    started_at: DateTime<Utc>,
+    completed_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
 struct GithubWorkflowRunJob {
-    
+    id: u64,
+    run_id: u64,
+    status: String,
+    conclusion: Option<String>,
+    started_at: DateTime<Utc>,
+    completed_at: DateTime<Utc>,
+    name: String,
+    steps: Vec<GithubWorkflowRunJobStep>,
 }
 
 #[derive(Deserialize)]
 struct GithubJobResponse {
-    jobs: Vec<GithubWorkflowRunJob>
+    jobs: Vec<GithubWorkflowRunJob>,
 }
 
 impl WorkflowRepository for HttpWorkflowRepository {
@@ -124,7 +142,32 @@ impl WorkflowRepository for HttpWorkflowRepository {
             self.cfg.url, repo.owner, repo.repo, run_id
         );
 
-        let response: 
+        let response: GithubJobResponse = self.get_request(url).send()?.json()?;
+
+        Ok(response
+            .jobs
+            .into_iter()
+            .map(|job| Job {
+                id: job.id,
+                name: job.name,
+                status: job.status,
+                conclusion: job.conclusion,
+                started_at: DateTime::from(job.started_at),
+                completed_at: DateTime::from(job.completed_at),
+                steps: job
+                    .steps
+                    .into_iter()
+                    .map(|step| Step {
+                        name: step.name,
+                        status: step.status,
+                        conclusion: step.conclusion,
+                        number: step.number,
+                        started_at: DateTime::from(step.started_at),
+                        completed_at: DateTime::from(step.completed_at),
+                    })
+                    .collect(),
+            })
+            .collect())
     }
 
     fn trigger_workflow(&self, repo: &Repository, workflow_id: u64, reference: &str) -> Result<()> {
