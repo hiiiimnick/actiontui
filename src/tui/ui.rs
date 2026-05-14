@@ -5,7 +5,7 @@ use ratatui::{
 
 use crate::tui::{
     app::App,
-    components::{dispatch, logs, runlist, workflowlist},
+    components::{joblist, logs, runlist, workflowlist},
 };
 
 pub fn ui(app: &mut App, frame: &mut Frame) {
@@ -22,11 +22,11 @@ fn workflow_manager_layout(app: &mut App, frame: &mut Frame) {
         .split(main_rects[0]);
     let right_rects = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(75), Constraint::Percentage(25)])
+        .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
         .split(main_rects[1]);
 
     workflowlist::render(app, frame, left_rects[0]);
-    dispatch::render(app, frame, left_rects[1]);
-    runlist::render(app, frame, right_rects[1]);
-    logs::render(app, frame, right_rects[0]);
+    joblist::render(app, frame, left_rects[1]);
+    runlist::render(app, frame, right_rects[0]);
+    logs::render(app, frame, right_rects[1]);
 }

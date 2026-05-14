@@ -21,6 +21,8 @@ pub enum CurrentFocus {
     Workflows,
     Runs,
     Jobs,
+    Steps,
+    Logs,
 }
 
 #[derive(Debug)]
@@ -39,6 +41,9 @@ pub struct App {
 
     pub selected_run: Option<Run>,
     pub jobs: Vec<Job>,
+
+    pub selected_job: Option<Job>,
+    pub job_state: ListState,
 }
 
 impl App {
@@ -62,6 +67,8 @@ impl App {
             runs: Vec::new(),
             selected_run: None,
             jobs: Vec::new(),
+            selected_job: None,
+            job_state: ListState::default(),
         })
     }
 
@@ -142,13 +149,20 @@ impl App {
                             && let Some(run) = self.runs.get(index)
                         {
                             self.selected_run = Some(run.clone());
-                            self.jobs = HttpWorkflowRepository::new(self.cfg.clone()).ge
+                            self.jobs = HttpWorkflowRepository::new(self.cfg.clone())
+                                .get_jobs(&self.repo, run.id)?;
+                            self.current_focus = CurrentFocus::Jobs;
+                            self.run_state = ListState::default();
                         }
                     }
                     _ => {}
                 }
             }
+            CurrentFocus::Jobs => {
+                navigate_list(key, &mut self.job_state);
+            }
             CurrentFocus::Steps => {}
+            CurrentFocus::Logs => {}
         }
         Ok(false)
     }
