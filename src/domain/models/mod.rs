@@ -1,4 +1,5 @@
 pub mod job;
+pub mod logs;
 pub mod repository;
 pub mod run;
 pub mod step;

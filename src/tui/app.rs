@@ -2,7 +2,8 @@ use color_eyre::eyre::Error;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
-use ratatui::widgets::ListState;
+use ratatui::widgets::{List, ListState};
+use tui_widget_list;
 
 use crate::Config;
 use crate::domain::models::run;
@@ -21,7 +22,6 @@ pub enum CurrentFocus {
     Workflows,
     Runs,
     Jobs,
-    Steps,
     Logs,
 }
 
@@ -33,24 +33,25 @@ pub struct App {
     pub mode: Mode,
 
     pub workflows: Vec<Workflow>,
-    pub workflow_state: ListState,
+    pub workflow_state: tui_widget_list::ListState,
 
-    pub selected_workflow: Option<Workflow>,
+    pub selected_workflow_id: Option<u64>,
     pub runs: Vec<Run>,
     pub run_state: ListState,
 
-    pub selected_run: Option<Run>,
+    pub selected_run_id: Option<u64>,
     pub jobs: Vec<Job>,
+    pub job_state: ListState,
 
     pub selected_job: Option<Job>,
-    pub job_state: ListState,
+    pub logs: String,
 }
 
 impl App {
     pub fn new(cfg: Config, repo: Repository) -> Result<App, Error> {
         let workflow_repo = HttpWorkflowRepository::new(cfg.clone());
         let workflows = workflow_repo.get_workflows(&repo)?;
-        let mut workflow_state = ListState::default();
+        let mut workflow_state = tui_widget_list::ListState::default();
         if !workflows.is_empty() {
             workflow_state.select(Some(0));
         }
@@ -62,13 +63,14 @@ impl App {
             workflow_state,
             current_focus: CurrentFocus::Workflows,
             mode: Mode::Navigation,
-            selected_workflow: None,
+            selected_workflow_id: None,
             run_state: ListState::default(),
             runs: Vec::new(),
-            selected_run: None,
+            selected_run_id: None,
             jobs: Vec::new(),
             selected_job: None,
             job_state: ListState::default(),
+            logs: String::new(),
         })
     }
 
@@ -114,41 +116,50 @@ impl App {
         }
 
         match self.current_focus {
-            CurrentFocus::Workflows => {
-                navigate_list(key, &mut self.workflow_state);
-                match key.code {
-                    KeyCode::Char('r') => {
-                        self.workflows = HttpWorkflowRepository::new(self.cfg.clone())
-                            .get_workflows(&self.repo)?;
-                    }
-                    KeyCode::Enter => {
-                        if let Some(index) = self.workflow_state.selected()
-                            && let Some(workflow) = self.workflows.get(index)
-                        {
-                            self.selected_workflow = Some(workflow.clone());
-                            self.runs = HttpWorkflowRepository::new(self.cfg.clone())
-                                .get_runs(&self.repo, workflow.id)?;
-                            self.current_focus = CurrentFocus::Runs;
-                            self.workflow_state = ListState::default();
-                        }
-                    }
-                    _ => {}
+            CurrentFocus::Workflows => match key.code {
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.workflow_state.previous();
                 }
-            }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.workflow_state.next();
+                }
+                KeyCode::Char('K') | KeyCode::Home => {
+                    self.workflow_state.select(Some(0));
+                }
+                KeyCode::Char('J') | KeyCode::End => {
+                    self.workflow_state.select(Some(self.workflows.len() - 1));
+                }
+                KeyCode::Char('r') => {
+                    self.workflows =
+                        HttpWorkflowRepository::new(self.cfg.clone()).get_workflows(&self.repo)?;
+                }
+                KeyCode::Enter => {
+                    if let Some(index) = self.workflow_state.selected
+                        && let Some(workflow) = self.workflows.get(index)
+                    {
+                        self.selected_workflow_id = Some(workflow.id);
+                        self.runs = HttpWorkflowRepository::new(self.cfg.clone())
+                            .get_runs(&self.repo, workflow.id)?;
+                        self.current_focus = CurrentFocus::Runs;
+                        self.workflow_state = tui_widget_list::ListState::default();
+                    }
+                }
+                _ => {}
+            },
             CurrentFocus::Runs => {
                 navigate_list(key, &mut self.run_state);
                 match key.code {
                     KeyCode::Char('r') => {
-                        if let Some(workflow) = &self.selected_workflow {
+                        if let Some(workflow_id) = &self.selected_workflow_id {
                             self.runs = HttpWorkflowRepository::new(self.cfg.clone())
-                                .get_runs(&self.repo, workflow.id)?;
+                                .get_runs(&self.repo, *workflow_id)?;
                         }
                     }
                     KeyCode::Enter => {
                         if let Some(index) = self.run_state.selected()
                             && let Some(run) = self.runs.get(index)
                         {
-                            self.selected_run = Some(run.clone());
+                            self.selected_run_id = Some(run.id);
                             self.jobs = HttpWorkflowRepository::new(self.cfg.clone())
                                 .get_jobs(&self.repo, run.id)?;
                             self.current_focus = CurrentFocus::Jobs;
@@ -160,8 +171,27 @@ impl App {
             }
             CurrentFocus::Jobs => {
                 navigate_list(key, &mut self.job_state);
+                match key.code {
+                    KeyCode::Char('r') => {
+                        if let Some(run_id) = &self.selected_run_id {
+                            self.jobs = HttpWorkflowRepository::new(self.cfg.clone())
+                                .get_jobs(&self.repo, *run_id)?;
+                        }
+                    }
+                    KeyCode::Enter => {
+                        if let Some(index) = self.job_state.selected()
+                            && let Some(job) = self.jobs.get(index)
+                        {
+                            self.selected_job = Some(job.clone());
+                            self.current_focus = CurrentFocus::Logs;
+                            self.job_state = ListState::default();
+                            self.logs = HttpWorkflowRepository::new(self.cfg.clone())
+                                .get_logs(&self.repo, job.id)?;
+                        }
+                    }
+                    _ => {}
+                }
             }
-            CurrentFocus::Steps => {}
             CurrentFocus::Logs => {}
         }
         Ok(false)

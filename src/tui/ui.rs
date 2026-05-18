@@ -9,24 +9,20 @@ use crate::tui::{
 };
 
 pub fn ui(app: &mut App, frame: &mut Frame) {
-    workflow_manager_layout(app, frame);
-}
-fn workflow_manager_layout(app: &mut App, frame: &mut Frame) {
-    let main_rects = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Max(30), Constraint::Min(40)])
-        .split(frame.area());
-    let left_rects = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(main_rects[0]);
-    let right_rects = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
-        .split(main_rects[1]);
+    let main_rects = Layout::vertical([
+        Constraint::Max(3),
+        Constraint::Percentage(30),
+        Constraint::Min(12),
+        Constraint::Max(1),
+    ])
+    .split(frame.area());
 
-    workflowlist::render(app, frame, left_rects[0]);
-    joblist::render(app, frame, left_rects[1]);
-    runlist::render(app, frame, right_rects[0]);
-    logs::render(app, frame, right_rects[1]);
+    let horizontal_split =
+        Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
+            .split(main_rects[2]);
+
+    workflowlist::render(app, frame, main_rects[0]);
+    runlist::render(app, frame, main_rects[1]);
+    joblist::render(app, frame, horizontal_split[0]);
+    logs::render(app, frame, horizontal_split[1]);
 }

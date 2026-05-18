@@ -11,8 +11,6 @@ use std::io;
 use tui::app::App;
 
 use crate::domain::models::Repository;
-use crate::domain::repositories::WorkflowRepository;
-use crate::infrastructure::github_api::HttpWorkflowRepository;
 
 mod config;
 mod domain;

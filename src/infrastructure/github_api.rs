@@ -1,15 +1,17 @@
-use std::fmt::format;
+use std::fs::{File, write};
+use std::io::Write;
 
 use crate::Config;
-use crate::domain::models::{Repository, Run, Workflow, step};
+use crate::domain::models::{Repository, Run, Workflow};
 use crate::domain::repositories::WorkflowRepository;
 use crate::domain::{Job, Step};
 use chrono::{DateTime, Utc};
 use color_eyre::Result;
 use color_eyre::eyre::Ok;
-use reqwest::blocking::Client;
+use reqwest::blocking::{Client, Response};
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use serde::Deserialize;
+use tempfile::tempfile;
 
 #[derive(Default, Debug)]
 pub struct HttpWorkflowRepository {
@@ -70,10 +72,9 @@ struct GithubWorkflowRunJobStep {
     status: String,
     conclusion: Option<String>,
     number: u64,
-    started_at: DateTime<Utc>,
-    completed_at: DateTime<Utc>,
+    started_at: String,
+    completed_at: String,
 }
-
 #[derive(Deserialize)]
 struct GithubWorkflowRunJob {
     id: u64,
@@ -162,12 +163,23 @@ impl WorkflowRepository for HttpWorkflowRepository {
                         status: step.status,
                         conclusion: step.conclusion,
                         number: step.number,
-                        started_at: DateTime::from(step.started_at),
-                        completed_at: DateTime::from(step.completed_at),
+                        started_at: step.started_at,
+                        completed_at: step.completed_at,
                     })
                     .collect(),
             })
             .collect())
+    }
+
+    fn get_logs(&self, repo: &Repository, job_id: u64) -> Result<String> {
+        let url = format!(
+            "https://api.{}/repos/{}/{}/actions/jobs/{}/logs",
+            self.cfg.url, repo.owner, repo.repo, job_id
+        );
+        let result = self.get_request(url).send()?;
+        let logs = result.text()?;
+
+        Ok(logs)
     }
 
     fn trigger_workflow(&self, repo: &Repository, workflow_id: u64, reference: &str) -> Result<()> {

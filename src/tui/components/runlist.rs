@@ -22,6 +22,15 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .map(|run| {
             let status = map_status_to_span(run.status.clone(), run.conclusion.clone());
 
+            if let Some(selected) = app.selected_run_id
+                && run.id == selected
+            {
+                return ListItem::new(Line::from(vec![
+                    status,
+                    Span::raw(format_line(run, area_width)).style(Color::Yellow),
+                ]));
+            }
+
             ListItem::new(Line::from(vec![
                 status,
                 Span::raw(format_line(run, area_width)),
@@ -29,18 +38,14 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         })
         .collect();
 
-    let mut block = Block::default()
-        .borders(Borders::ALL)
-        .style(map_block_color(app, CurrentFocus::Runs))
-        .title(Line::from("[2]").left_aligned())
-        .title(Line::from("Runs").left_aligned());
-
-    if let Some(workflow) = &app.selected_workflow {
-        block = block.title(Line::from(workflow.name.to_string()).centered())
-    }
-
     let list = List::new(list_items)
-        .block(block)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(map_block_color(app, CurrentFocus::Runs))
+                .title(Line::from("[2]").left_aligned())
+                .title(Line::from("Runs").left_aligned()),
+        )
         .style(Style::default().fg(Color::White))
         .highlight_style(Style::default().bg(Color::White).fg(Color::Black));
 
