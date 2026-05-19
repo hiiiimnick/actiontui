@@ -1,7 +1,5 @@
-use std::fs::{File, write};
-use std::io::Write;
-
 use crate::Config;
+use crate::domain::models::logs::Logs;
 use crate::domain::models::{Repository, Run, Workflow};
 use crate::domain::repositories::WorkflowRepository;
 use crate::domain::{Job, Step};
@@ -11,7 +9,6 @@ use color_eyre::eyre::Ok;
 use reqwest::blocking::{Client, Response};
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use serde::Deserialize;
-use tempfile::tempfile;
 
 #[derive(Default, Debug)]
 pub struct HttpWorkflowRepository {
@@ -171,14 +168,17 @@ impl WorkflowRepository for HttpWorkflowRepository {
             .collect())
     }
 
-    fn get_logs(&self, repo: &Repository, job_id: u64) -> Result<String> {
+    fn get_logs(&self, repo: &Repository, job_id: u64) -> Result<Logs> {
         let url = format!(
             "https://api.{}/repos/{}/{}/actions/jobs/{}/logs",
             self.cfg.url, repo.owner, repo.repo, job_id
         );
-        let result = self.get_request(url).send()?;
-        let logs = result.text()?;
-
+        let result = self.get_request(url).send().unwrap();
+        let mut logs = Logs {
+            text: result.text().unwrap().into_bytes(),
+            length: 0,
+        };
+        logs.length = logs.text.len();
         Ok(logs)
     }
 

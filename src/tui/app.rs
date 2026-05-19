@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::fs::File;
+
 use color_eyre::eyre::Error;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
@@ -44,7 +47,8 @@ pub struct App {
     pub job_state: ListState,
 
     pub selected_job: Option<Job>,
-    pub logs: String,
+    pub logs: Option<File>,
+    pub log_index: HashMap<String, (u64, u64)>,
 }
 
 impl App {
@@ -70,7 +74,8 @@ impl App {
             jobs: Vec::new(),
             selected_job: None,
             job_state: ListState::default(),
-            logs: String::new(),
+            logs: None,
+            log_index: HashMap::default(),
         })
     }
 
@@ -185,8 +190,14 @@ impl App {
                             self.selected_job = Some(job.clone());
                             self.current_focus = CurrentFocus::Logs;
                             self.job_state = ListState::default();
-                            self.logs = HttpWorkflowRepository::new(self.cfg.clone())
-                                .get_logs(&self.repo, job.id)?;
+                            let logs = HttpWorkflowRepository::new(self.cfg.clone())
+                                .get_logs(&self.repo, job.id)
+                                .unwrap();
+                            self.logs = Some(logs.save_to_file().unwrap());
+                            self.log_index = logs.create_step_index(job.steps.clone()).unwrap();
+                            for (name, value) in &self.log_index {
+                                println!("{}{}{}", name, value.0, value.1);
+                            }
                         }
                     }
                     _ => {}

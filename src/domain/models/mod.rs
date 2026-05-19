@@ -6,6 +6,7 @@ pub mod step;
 pub mod workflow;
 
 pub use job::Job;
+pub use logs::Logs;
 pub use repository::Repository;
 pub use run::Run;
 pub use step::Step;
