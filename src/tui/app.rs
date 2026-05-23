@@ -6,6 +6,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
 use ratatui::widgets::{List, ListState};
+use tempfile::NamedTempFile;
 use tui_widget_list;
 
 use crate::Config;
@@ -49,6 +50,7 @@ pub struct App {
     pub selected_job: Option<Job>,
     pub logs: Option<File>,
     pub log_index: HashMap<String, (u64, u64)>,
+    pub file: Option<NamedTempFile>,
 }
 
 impl App {
@@ -76,6 +78,7 @@ impl App {
             job_state: ListState::default(),
             logs: None,
             log_index: HashMap::default(),
+            file: None,
         })
     }
 
@@ -195,9 +198,7 @@ impl App {
                                 .unwrap();
                             self.logs = Some(logs.save_to_file().unwrap());
                             self.log_index = logs.create_step_index(job.steps.clone()).unwrap();
-                            for (name, value) in &self.log_index {
-                                println!("{}{}{}", name, value.0, value.1);
-                            }
+                            println!("{:?}", self.log_index);
                         }
                     }
                     _ => {}

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs::File, io::Write};
 
 use color_eyre::eyre::{Result, eyre};
-use tempfile::tempfile;
+use tempfile::{NamedTempFile, tempfile};
 
 use crate::domain::Step;
 
@@ -13,9 +13,8 @@ pub struct Logs {
 
 impl Logs {
     pub fn save_to_file(&self) -> Result<File> {
-        let mut file = tempfile()
-            .map_err(|error| eyre!("error creating tempfile: {}", error))
-            .unwrap();
+        println!("{}", std::env::temp_dir().display());
+        let mut file = tempfile()?;
         let _ = file.write_all(&self.text);
         Ok(file)
     }
@@ -30,8 +29,13 @@ impl Logs {
         }
         let mut temp_start = 0;
 
+        let search_terms: Vec<String> = steps
+            .iter()
+            .map(|s| s.started_at.replace("Z", ""))
+            .collect();
+
         while i < self.length {
-            if self.text[i..].starts_with(steps[step_count].started_at.as_bytes()) {
+            if self.text[i..].starts_with(search_terms[step_count].as_bytes()) {
                 if step_count < steps.len() - 1 {
                     step_index_map.insert(
                         steps[step_count - 1].name.clone(),
@@ -55,5 +59,77 @@ impl Logs {
         }
 
         Ok(step_index_map)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::Step;
+
+    #[test]
+    fn test_create_step_index_exact_match() {
+        let text = b"2023-11-20T14:48:00Z step 1\n2023-11-20T14:48:01Z step 2\n";
+        let logs = Logs {
+            text: text.to_vec(),
+            length: text.len(),
+        };
+        let steps = vec![
+            Step {
+                name: "Step 1".to_string(),
+                status: "completed".to_string(),
+                conclusion: Some("success".to_string()),
+                number: 1,
+                started_at: "2023-11-20T14:48:00Z".to_string(),
+                completed_at: "2023-11-20T14:48:01Z".to_string(),
+            },
+            Step {
+                name: "Step 2".to_string(),
+                status: "completed".to_string(),
+                conclusion: Some("success".to_string()),
+                number: 2,
+                started_at: "2023-11-20T14:48:01Z".to_string(),
+                completed_at: "2023-11-20T14:48:02Z".to_string(),
+            },
+        ];
+
+        let index = logs.create_step_index(steps).unwrap();
+        assert_eq!(index.len(), 2);
+        assert!(index.contains_key("Step 1"));
+        assert!(index.contains_key("Step 2"));
+    }
+
+    #[test]
+    fn test_create_step_index_mismatch() {
+        let text = b"2023-11-20T14:48:00.123Z step 1\n2023-11-20T14:48:01.456Z step 2\n";
+        let logs = Logs {
+            text: text.to_vec(),
+            length: text.len(),
+        };
+        let steps = vec![
+            Step {
+                name: "Step 1".to_string(),
+                status: "completed".to_string(),
+                conclusion: Some("success".to_string()),
+                number: 1,
+                started_at: "2023-11-20T14:48:00Z".to_string(),
+                completed_at: "2023-11-20T14:48:01Z".to_string(),
+            },
+            Step {
+                name: "Step 2".to_string(),
+                status: "completed".to_string(),
+                conclusion: Some("success".to_string()),
+                number: 2,
+                started_at: "2023-11-20T14:48:01Z".to_string(),
+                completed_at: "2023-11-20T14:48:02Z".to_string(),
+            },
+        ];
+
+        let index = logs.create_step_index(steps).unwrap();
+        assert_eq!(
+            index.len(),
+            2,
+            "Index should have 2 entries even with fractional seconds in logs"
+        );
     }
 }
