@@ -5,12 +5,11 @@ use color_eyre::eyre::Error;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
-use ratatui::widgets::{List, ListState};
+use ratatui::widgets::ListState;
 use tempfile::NamedTempFile;
 use tui_widget_list;
 
 use crate::Config;
-use crate::domain::models::run;
 use crate::domain::{Job, Repository, Run, Workflow, WorkflowRepository};
 use crate::infrastructure::HttpWorkflowRepository;
 use crate::tui::ui;

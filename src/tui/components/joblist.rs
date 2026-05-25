@@ -1,14 +1,16 @@
+use std::vec;
+
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier},
-    text::Line,
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, List, ListItem},
 };
 
 use crate::tui::{
     app::{App, CurrentFocus},
-    util::map_block_color,
+    util::{map_block_color, map_status_to_span},
 };
 
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
@@ -18,12 +20,16 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .iter()
         .map(|job| {
             let name = job.name.clone();
+            let status_span = map_status_to_span(&job.status, job.conclusion.as_deref());
             if let Some(selected) = selected_job
                 && selected == job
             {
-                return ListItem::new(format!("> {}", name)).style(Color::Yellow);
+                return ListItem::new(Line::from(vec![
+                    status_span,
+                    Span::raw(format!("[{}]", name)).style(Color::Yellow),
+                ]));
             }
-            ListItem::new(name)
+            ListItem::new(Line::from(vec![status_span, Span::raw(name)]))
         })
         .collect();
 
@@ -40,7 +46,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
                 ),
         )
         .style(Color::White)
-        .highlight_style(Modifier::REVERSED);
+        .highlight_style(Style::default().bg(Color::White).fg(Color::Black));
 
     frame.render_stateful_widget(list, area, &mut app.job_state);
 }
