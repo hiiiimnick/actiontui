@@ -49,7 +49,6 @@ pub struct App {
     pub selected_job: Option<Job>,
     pub logs: Option<File>,
     pub log_index: HashMap<String, (u64, u64)>,
-    pub file: Option<NamedTempFile>,
 }
 
 impl App {
@@ -77,7 +76,6 @@ impl App {
             job_state: ListState::default(),
             logs: None,
             log_index: HashMap::default(),
-            file: None,
         })
     }
 
@@ -197,7 +195,6 @@ impl App {
                                 .unwrap();
                             self.logs = Some(logs.save_to_file().unwrap());
                             self.log_index = logs.create_step_index(job.steps.clone()).unwrap();
-                            println!("{:?}", self.log_index);
                         }
                     }
                     _ => {}

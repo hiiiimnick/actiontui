@@ -39,7 +39,7 @@ impl Logs {
                 if step_count < steps.len() - 1 {
                     step_index_map.insert(
                         steps[step_count - 1].name.clone(),
-                        (temp_start, i as u64 - 1 - temp_start),
+                        (temp_start, i as u64 - temp_start),
                     );
                     temp_start = i as u64;
                     step_count += 1;
