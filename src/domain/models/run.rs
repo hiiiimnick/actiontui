@@ -8,7 +8,7 @@ pub struct Run {
     pub conclusion: Option<String>,
     pub workflow_id: u64,
     pub html_url: String,
-    pub created_at: DateTime<Local>,
+    pub created_at: Option<DateTime<Local>>,
     pub display_title: String,
     pub head_branch: String,
 }
@@ -22,7 +22,7 @@ impl Default for Run {
             conclusion: None,
             workflow_id: 0,
             html_url: String::new(),
-            created_at: Local::now(),
+            created_at: Some(Local::now()),
             display_title: String::new(),
             head_branch: String::new(),
         }

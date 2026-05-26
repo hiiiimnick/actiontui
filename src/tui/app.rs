@@ -10,7 +10,7 @@ use tempfile::NamedTempFile;
 use tui_widget_list;
 
 use crate::Config;
-use crate::domain::{Job, Repository, Run, Workflow, WorkflowRepository};
+use crate::domain::{Job, Repository, Run, Step, Workflow, WorkflowRepository};
 use crate::infrastructure::HttpWorkflowRepository;
 use crate::tui::ui;
 
@@ -49,6 +49,9 @@ pub struct App {
     pub selected_job: Option<Job>,
     pub logs: Option<File>,
     pub log_index: HashMap<String, (u64, u64)>,
+
+    pub step_state: ListState,
+    pub selected_step: Option<Step>,
 }
 
 impl App {
@@ -76,6 +79,8 @@ impl App {
             job_state: ListState::default(),
             logs: None,
             log_index: HashMap::default(),
+            step_state: ListState::default(),
+            selected_step: None,
         })
     }
 

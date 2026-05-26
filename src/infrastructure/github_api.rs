@@ -3,6 +3,7 @@ use crate::domain::models::logs::Logs;
 use crate::domain::models::{Repository, Run, Workflow};
 use crate::domain::repositories::WorkflowRepository;
 use crate::domain::{Job, Step};
+use crate::infrastructure::map_optional_time;
 use chrono::{DateTime, Utc};
 use color_eyre::Result;
 use color_eyre::eyre::Ok;
@@ -58,7 +59,7 @@ struct GithubWorkflowRun {
     conclusion: Option<String>,
     workflow_id: u64,
     html_url: String,
-    created_at: DateTime<Utc>,
+    created_at: Option<DateTime<Utc>>,
     display_title: String,
     head_branch: String,
 }
@@ -127,7 +128,7 @@ impl WorkflowRepository for HttpWorkflowRepository {
                 conclusion: run.conclusion,
                 workflow_id: run.workflow_id,
                 html_url: run.html_url,
-                created_at: DateTime::from(run.created_at),
+                created_at: map_optional_time(run.created_at),
                 display_title: run.display_title,
                 head_branch: run.head_branch,
             })

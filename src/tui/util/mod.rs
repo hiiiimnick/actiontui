@@ -1,3 +1,4 @@
+use chrono::{DateTime, Local};
 use ratatui::{
     style::{Color, Style},
     text::Span,
@@ -38,4 +39,11 @@ pub fn map_status_to_span(status: &str, conclusion: Option<&str>) -> Span<'stati
         }
         _ => Span::styled("   ", Style::default().fg(Color::Red)),
     }
+}
+
+pub fn map_optional_time_to_string(optinal_time: Option<DateTime<Local>>) -> String {
+    if let Some(time) = optinal_time {
+        return time.format("%Y-%m-%d %H:%M:%S").to_string();
+    }
+    String::default()
 }
