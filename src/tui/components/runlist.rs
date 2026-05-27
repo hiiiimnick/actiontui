@@ -63,7 +63,6 @@ fn format_line(run: &Run, available_width: usize) -> String {
         String::from("")
     };
     let time_len = time.chars().count();
-    print!("{}", time_len);
     let gap_len = 1;
 
     // Fixed points:
