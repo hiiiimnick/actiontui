@@ -57,7 +57,11 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
 }
 
 fn format_line(run: &Run, available_width: usize) -> String {
-    let time = run.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
+    let time = if let Some(op_time) = run.created_at {
+        return op_time.format("%Y-%m-%d %H:%M:%S").to_string();
+    } else {
+        ""
+    };
     let time_len = time.chars().count();
     let gap_len = 1;
 
