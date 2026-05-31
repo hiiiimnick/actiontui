@@ -145,9 +145,11 @@ mod tests {
             conclusion: Some("success".to_string()),
             workflow_id: 1,
             html_url: "url".to_string(),
-            created_at: chrono::Local
-                .with_ymd_and_hms(2024, 5, 23, 12, 0, 0)
-                .unwrap(),
+            created_at: Some(
+                chrono::Local
+                    .with_ymd_and_hms(2024, 5, 23, 12, 0, 0)
+                    .unwrap(),
+            ),
             display_title: "A very long title that would previously have no space".to_string(),
             head_branch: "main".to_string(),
         };
@@ -176,18 +178,22 @@ mod tests {
             id: 1,
             display_title: "Short title".to_string(),
             head_branch: "main".to_string(),
-            created_at: chrono::Local
-                .with_ymd_and_hms(2024, 5, 23, 12, 0, 0)
-                .unwrap(),
+            created_at: Some(
+                chrono::Local
+                    .with_ymd_and_hms(2024, 5, 23, 12, 0, 0)
+                    .unwrap(),
+            ),
             ..Default::default()
         };
         let run2 = Run {
             id: 2,
             display_title: "Title with ellipsis…".to_string(), // … is 3 bytes but 1 char
             head_branch: "main".to_string(),
-            created_at: chrono::Local
-                .with_ymd_and_hms(2024, 5, 23, 12, 0, 0)
-                .unwrap(),
+            created_at: Some(
+                chrono::Local
+                    .with_ymd_and_hms(2024, 5, 23, 12, 0, 0)
+                    .unwrap(),
+            ),
             ..Default::default()
         };
 

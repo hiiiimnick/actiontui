@@ -6,7 +6,6 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
 use ratatui::widgets::ListState;
-use tempfile::NamedTempFile;
 use tui_widget_list;
 
 use crate::Config;
@@ -34,6 +33,7 @@ pub struct App {
     pub repo: Repository,
     pub current_focus: CurrentFocus,
     pub mode: Mode,
+    pub workflowrepo: Box<dyn WorkflowRepository>,
 
     pub workflows: Vec<Workflow>,
     pub workflow_state: tui_widget_list::ListState,
@@ -56,7 +56,7 @@ pub struct App {
 
 impl App {
     pub fn new(cfg: Config, repo: Repository) -> Result<App, Error> {
-        let workflow_repo = HttpWorkflowRepository::new(cfg.clone());
+        let workflow_repo = Box::new(HttpWorkflowRepository::new(cfg.clone()));
         let workflows = workflow_repo.get_workflows(&repo)?;
         let mut workflow_state = tui_widget_list::ListState::default();
         if !workflows.is_empty() {
@@ -66,6 +66,7 @@ impl App {
         Ok(App {
             cfg,
             repo,
+            workflowrepo: workflow_repo,
             workflows,
             workflow_state,
             current_focus: CurrentFocus::Workflows,
@@ -83,7 +84,6 @@ impl App {
             selected_step: None,
         })
     }
-
     pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<bool, Error>
     where
         Error: From<B::Error>,
@@ -148,8 +148,7 @@ impl App {
                         && let Some(workflow) = self.workflows.get(index)
                     {
                         self.selected_workflow_id = Some(workflow.id);
-                        self.runs = HttpWorkflowRepository::new(self.cfg.clone())
-                            .get_runs(&self.repo, workflow.id)?;
+                        self.runs = self.workflowrepo.get_runs(&self.repo, workflow.id)?;
                         self.current_focus = CurrentFocus::Runs;
                         self.workflow_state = tui_widget_list::ListState::default();
                     }
@@ -161,8 +160,7 @@ impl App {
                 match key.code {
                     KeyCode::Char('r') => {
                         if let Some(workflow_id) = &self.selected_workflow_id {
-                            self.runs = HttpWorkflowRepository::new(self.cfg.clone())
-                                .get_runs(&self.repo, *workflow_id)?;
+                            self.runs = self.workflowrepo.get_runs(&self.repo, *workflow_id)?;
                         }
                     }
                     KeyCode::Enter => {
@@ -170,8 +168,7 @@ impl App {
                             && let Some(run) = self.runs.get(index)
                         {
                             self.selected_run_id = Some(run.id);
-                            self.jobs = HttpWorkflowRepository::new(self.cfg.clone())
-                                .get_jobs(&self.repo, run.id)?;
+                            self.jobs = self.workflowrepo.get_jobs(&self.repo, run.id)?;
                             self.current_focus = CurrentFocus::Jobs;
                             self.run_state = ListState::default();
                         }
@@ -184,8 +181,7 @@ impl App {
                 match key.code {
                     KeyCode::Char('r') => {
                         if let Some(run_id) = &self.selected_run_id {
-                            self.jobs = HttpWorkflowRepository::new(self.cfg.clone())
-                                .get_jobs(&self.repo, *run_id)?;
+                            self.jobs = self.workflowrepo.get_jobs(&self.repo, *run_id)?;
                         }
                     }
                     KeyCode::Enter => {
@@ -195,9 +191,7 @@ impl App {
                             self.selected_job = Some(job.clone());
                             self.current_focus = CurrentFocus::Logs;
                             self.job_state = ListState::default();
-                            let logs = HttpWorkflowRepository::new(self.cfg.clone())
-                                .get_logs(&self.repo, job.id)
-                                .unwrap();
+                            let logs = self.workflowrepo.get_logs(&self.repo, job.id).unwrap();
                             self.logs = Some(logs.save_to_file().unwrap());
                             self.log_index = logs.create_step_index(job.steps.clone()).unwrap();
                         }
