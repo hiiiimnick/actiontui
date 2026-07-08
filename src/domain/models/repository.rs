@@ -36,7 +36,7 @@ impl Repository {
     }
 
     pub fn parse_url(url: &str) -> Result<Self> {
-        let path = if let Some(ssh_part) = url.strip_prefix("git@") {
+        let path = if let Some(ssh_part) = url.split_terminator("@").last() {
             ssh_part
                 .split_once(':')
                 .map(|x| x.1)

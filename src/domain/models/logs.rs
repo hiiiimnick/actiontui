@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs::File, io::Write};
 
-use color_eyre::eyre::{Result, eyre};
-use tempfile::{NamedTempFile, tempfile};
+use color_eyre::eyre::Result;
+use tempfile::tempfile;
 
 use crate::domain::Step;
 
@@ -19,7 +19,7 @@ impl Logs {
         Ok(file)
     }
 
-    pub fn create_step_index(&self, steps: Vec<Step>) -> Result<HashMap<String, (u64, u64)>> {
+    pub fn create_step_index(&self, steps: &Vec<Step>) -> Result<HashMap<String, (u64, u64)>> {
         let mut i = 0;
         let mut step_count = 1;
         let mut step_index_map: HashMap<String, (u64, u64)> = HashMap::new();
@@ -93,7 +93,7 @@ mod tests {
             },
         ];
 
-        let index = logs.create_step_index(steps).unwrap();
+        let index = logs.create_step_index(&steps).unwrap();
         assert_eq!(index.len(), 2);
         assert!(index.contains_key("Step 1"));
         assert!(index.contains_key("Step 2"));
@@ -125,7 +125,7 @@ mod tests {
             },
         ];
 
-        let index = logs.create_step_index(steps).unwrap();
+        let index = logs.create_step_index(&steps).unwrap();
         assert_eq!(
             index.len(),
             2,

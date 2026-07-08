@@ -3,7 +3,7 @@ use std::vec;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem},
 };
@@ -19,7 +19,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .jobs
         .iter()
         .map(|job| {
-            let name = job.name.clone();
+            let name = &job.name;
             let status_span = map_status_to_span(&job.status, job.conclusion.as_deref());
             if let Some(selected) = selected_job
                 && selected == job

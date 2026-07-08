@@ -29,7 +29,6 @@ pub enum CurrentFocus {
 
 #[derive(Debug)]
 pub struct App {
-    pub cfg: Config,
     pub repo: Repository,
     pub current_focus: CurrentFocus,
     pub mode: Mode,
@@ -56,7 +55,7 @@ pub struct App {
 
 impl App {
     pub fn new(cfg: Config, repo: Repository) -> Result<App, Error> {
-        let workflow_repo = Box::new(HttpWorkflowRepository::new(cfg.clone()));
+        let workflow_repo = Box::new(HttpWorkflowRepository::new(cfg));
         let workflows = workflow_repo.get_workflows(&repo)?;
         let mut workflow_state = tui_widget_list::ListState::default();
         if !workflows.is_empty() {
@@ -64,7 +63,6 @@ impl App {
         }
 
         Ok(App {
-            cfg,
             repo,
             workflowrepo: workflow_repo,
             workflows,
@@ -122,6 +120,13 @@ impl App {
             KeyCode::Char('2') => {
                 self.current_focus = CurrentFocus::Runs;
             }
+            KeyCode::Char('3') => {
+                self.current_focus = CurrentFocus::Jobs;
+            }
+            KeyCode::Char('4') => {
+                self.current_focus = CurrentFocus::Logs;
+            }
+
             _ => {}
         }
 
@@ -140,8 +145,7 @@ impl App {
                     self.workflow_state.select(Some(self.workflows.len() - 1));
                 }
                 KeyCode::Char('r') => {
-                    self.workflows =
-                        HttpWorkflowRepository::new(self.cfg.clone()).get_workflows(&self.repo)?;
+                    self.workflows = self.workflowrepo.get_workflows(&self.repo)?;
                 }
                 KeyCode::Enter => {
                     if let Some(index) = self.workflow_state.selected
@@ -193,7 +197,7 @@ impl App {
                             self.job_state = ListState::default();
                             let logs = self.workflowrepo.get_logs(&self.repo, job.id).unwrap();
                             self.logs = Some(logs.save_to_file().unwrap());
-                            self.log_index = logs.create_step_index(job.steps.clone()).unwrap();
+                            self.log_index = logs.create_step_index(&job.steps).unwrap();
                         }
                     }
                     _ => {}

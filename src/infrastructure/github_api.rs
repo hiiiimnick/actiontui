@@ -7,7 +7,7 @@ use crate::infrastructure::map_optional_time;
 use chrono::{DateTime, Utc};
 use color_eyre::Result;
 use color_eyre::eyre::Ok;
-use reqwest::blocking::{Client, Response};
+use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use serde::Deserialize;
 

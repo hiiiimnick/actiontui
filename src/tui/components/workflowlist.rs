@@ -18,7 +18,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     }
 
     let builder = ListBuilder::new(|context| {
-        let workflow = app.workflows[context.index % app.workflows.len()].clone();
+        let workflow = &app.workflows[context.index % app.workflows.len()];
         let default_line = Line::from(Span::styled(
             format!(" {} ", workflow.name),
             Style::default().fg(Color::White),
