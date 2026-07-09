@@ -76,7 +76,6 @@ struct GithubWorkflowRunJobStep {
 #[derive(Deserialize)]
 struct GithubWorkflowRunJob {
     id: u64,
-    run_id: u64,
     status: String,
     conclusion: Option<String>,
     started_at: DateTime<Utc>,
