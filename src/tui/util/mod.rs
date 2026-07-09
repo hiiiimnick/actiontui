@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, NaiveDateTime};
 use ratatui::{
     style::{Color, Style},
     text::Span,
@@ -46,4 +46,17 @@ pub fn map_optional_time_to_string(optinal_time: Option<DateTime<Local>>) -> Str
         return time.format("%Y-%m-%d %H:%M:%S").to_string();
     }
     String::default()
+}
+
+pub fn map_delta_time_to_duration(start_time: &str, end_time: &str) -> String {
+    let start = DateTime::parse_from_rfc3339(start_time).expect("Failed to parse Step timestamp");
+    let end = DateTime::parse_from_rfc3339(end_time).expect("Failed to parse step timestamp");
+
+    let duration = end.signed_duration_since(start);
+
+    return format!(
+        "{}m {}s",
+        duration.num_minutes(),
+        duration.num_seconds() % 60
+    );
 }

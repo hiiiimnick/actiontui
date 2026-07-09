@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -8,10 +9,11 @@ use ratatui::{
 
 use crate::tui::{
     app::{App, CurrentFocus},
-    util::{map_block_color, map_status_to_span},
+    util::{map_block_color, map_delta_time_to_duration, map_status_to_span},
 };
 
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
+    let local_time = Utc::now().to_rfc3339();
     let list_items: Vec<ListItem> = if let Some(selected) = &app.selected_job {
         selected
             .steps
@@ -20,7 +22,28 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
                 let name = step.name.clone();
                 let status_span = map_status_to_span(&step.status, step.conclusion.as_deref());
 
-                return ListItem::new(Line::from(vec![status_span, Span::raw(name)]));
+                let duration = if step.started_at != "" {
+                    if step.completed_at != "" {
+                        map_delta_time_to_duration(
+                            step.started_at.as_str(),
+                            step.completed_at.as_str(),
+                        )
+                    } else {
+                        map_delta_time_to_duration(step.started_at.as_str(), &local_time)
+                    }
+                } else {
+                    String::new()
+                };
+
+                let filler = " ".repeat(
+                    area.width as usize - 2 - status_span.width() - name.len() - duration.len(),
+                );
+                return ListItem::new(Line::from(vec![
+                    status_span,
+                    Span::raw(name),
+                    Span::raw(filler),
+                    Span::raw(duration),
+                ]));
             })
             .collect()
     } else {
