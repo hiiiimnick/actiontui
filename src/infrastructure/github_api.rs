@@ -168,6 +168,35 @@ impl WorkflowRepository for HttpWorkflowRepository {
             .collect())
     }
 
+    fn get_job_by_id(&self, repo: &Repository, job_id: u64) -> Result<Job> {
+        let url = format!(
+            "https://api.{}/repos/{}/{}/actions/jobs/{}",
+            self.cfg.url, repo.owner, repo.repo, job_id
+        );
+
+        let response: GithubWorkflowRunJob = self.get_request(url).send()?.json()?;
+        Ok(Job {
+            id: response.id,
+            name: response.name,
+            status: response.status,
+            conclusion: response.conclusion,
+            started_at: DateTime::from(response.started_at),
+            completed_at: DateTime::from(response.completed_at),
+            steps: response
+                .steps
+                .into_iter()
+                .map(|step| Step {
+                    name: step.name,
+                    status: step.status,
+                    conclusion: step.conclusion,
+                    number: step.number,
+                    started_at: step.started_at,
+                    completed_at: step.completed_at,
+                })
+                .collect(),
+        })
+    }
+
     fn get_logs(&self, repo: &Repository, job_id: u64) -> Result<Logs> {
         let url = format!(
             "https://api.{}/repos/{}/{}/actions/jobs/{}/logs",

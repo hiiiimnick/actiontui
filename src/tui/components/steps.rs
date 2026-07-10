@@ -54,9 +54,9 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(map_block_color(app, CurrentFocus::Logs))
+                .style(map_block_color(app, CurrentFocus::Steps))
                 .title(Line::from("[4]").left_aligned())
-                .title(Line::from("Logs").left_aligned()),
+                .title(Line::from("Steps").left_aligned()),
         )
         .style(Color::White)
         .highlight_style(Style::default().bg(Color::White).fg(Color::Black));

@@ -24,7 +24,7 @@ pub enum CurrentFocus {
     Workflows,
     Runs,
     Jobs,
-    Logs,
+    Steps,
 }
 
 #[derive(Debug)]
@@ -124,7 +124,7 @@ impl App {
                 self.current_focus = CurrentFocus::Jobs;
             }
             KeyCode::Char('4') => {
-                self.current_focus = CurrentFocus::Logs;
+                self.current_focus = CurrentFocus::Steps;
             }
 
             _ => {}
@@ -193,7 +193,7 @@ impl App {
                             && let Some(job) = self.jobs.get(index)
                         {
                             self.selected_job = Some(job.clone());
-                            self.current_focus = CurrentFocus::Logs;
+                            self.current_focus = CurrentFocus::Steps;
                             self.job_state = ListState::default();
                             let logs = self.workflowrepo.get_logs(&self.repo, job.id).unwrap();
                             self.logs = Some(logs.save_to_file().unwrap());
@@ -203,7 +203,20 @@ impl App {
                     _ => {}
                 }
             }
-            CurrentFocus::Logs => {}
+            CurrentFocus::Steps => {
+                navigate_list(key, &mut self.step_state);
+                match key.code {
+                    KeyCode::Char('r') => {
+                        if let Some(selected_job) = &self.selected_job {
+                            self.selected_job = Option::from(
+                                self.workflowrepo
+                                    .get_job_by_id(&self.repo, selected_job.id)?,
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
         Ok(false)
     }
