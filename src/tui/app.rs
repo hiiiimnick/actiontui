@@ -214,6 +214,9 @@ impl App {
                             );
                         }
                     }
+                    KeyCode::Enter => {
+                            if let Some(index) = self.step_state.selected() 
+                    }
                     _ => {}
                 }
             }
