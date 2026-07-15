@@ -41,8 +41,8 @@ pub fn map_status_to_span(status: &str, conclusion: Option<&str>) -> Span<'stati
     }
 }
 
-pub fn map_optional_time_to_string(optinal_time: Option<DateTime<Local>>) -> String {
-    if let Some(time) = optinal_time {
+pub fn map_optional_time_to_string(optional_time: Option<DateTime<Local>>) -> String {
+    if let Some(time) = optional_time {
         return time.format("%Y-%m-%d %H:%M:%S").to_string();
     }
     String::default()

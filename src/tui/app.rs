@@ -5,7 +5,7 @@ use color_eyre::eyre::Error;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
-use ratatui::widgets::ListState;
+use ratatui::widgets::{List, ListState};
 use tui_widget_list;
 
 use crate::Config;
@@ -25,6 +25,7 @@ pub enum CurrentFocus {
     Runs,
     Jobs,
     Steps,
+    Logs,
 }
 
 #[derive(Debug)]
@@ -51,6 +52,9 @@ pub struct App {
 
     pub step_state: ListState,
     pub selected_step: Option<Step>,
+
+    pub selected_logs: (u64, u64),
+    pub logs_offset: u64,
 }
 
 impl App {
@@ -80,6 +84,8 @@ impl App {
             log_index: HashMap::default(),
             step_state: ListState::default(),
             selected_step: None,
+            selected_logs: (0, 0),
+            logs_offset: 0,
         })
     }
     pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<bool, Error>
@@ -115,18 +121,24 @@ impl App {
             }
             KeyCode::Char('1') => {
                 self.current_focus = CurrentFocus::Workflows;
-                self.run_state = ListState::default();
+                self.set_default_states();
             }
             KeyCode::Char('2') => {
                 self.current_focus = CurrentFocus::Runs;
+                self.set_default_states();
             }
             KeyCode::Char('3') => {
                 self.current_focus = CurrentFocus::Jobs;
+                self.set_default_states();
             }
             KeyCode::Char('4') => {
                 self.current_focus = CurrentFocus::Steps;
+                self.set_default_states();
             }
-
+            KeyCode::Char('5') => {
+                self.current_focus = CurrentFocus::Logs;
+                self.set_default_states();
+            }
             _ => {}
         }
 
@@ -215,13 +227,50 @@ impl App {
                         }
                     }
                     KeyCode::Enter => {
-                            if let Some(index) = self.step_state.selected() 
+                        if let Some(index) = self.step_state.selected()
+                            && let Some(job) = &self.selected_job
+                            && let Some(step) = job.steps.get(index)
+                        {
+                            self.selected_step = Some(step.clone());
+                            self.current_focus = CurrentFocus::Logs;
+                            self.selected_logs = *self.log_index.get(&step.name).expect("test");
+                            self.logs_offset = 0;
+                        }
                     }
                     _ => {}
                 }
             }
+            CurrentFocus::Logs => match key.code {
+                KeyCode::Char('j') => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        self.logs_offset += 10;
+                    } else {
+                        self.logs_offset += 1;
+                    }
+                }
+                KeyCode::Char('k') => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        self.logs_offset -= 10;
+                    } else {
+                        self.logs_offset -= 1;
+                    }
+                }
+                KeyCode::Char('J') => {
+                    self.logs_offset = self.selected_logs.1;
+                }
+                KeyCode::Char('K') => {
+                    self.logs_offset = 0;
+                }
+                _ => {}
+            },
         }
         Ok(false)
+    }
+
+    fn set_default_states(&mut self) {
+        self.job_state = ListState::default();
+        self.run_state = ListState::default();
+        self.step_state = ListState::default();
     }
 }
 

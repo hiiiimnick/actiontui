@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use ratatui::{
     Frame,
     layout::Rect,
