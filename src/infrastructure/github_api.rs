@@ -8,6 +8,7 @@ use crate::infrastructure::workflow_definition::parse_dispatch_inputs;
 use chrono::{DateTime, Utc};
 use color_eyre::Result;
 use color_eyre::eyre::Ok;
+use reqwest::StatusCode;
 use reqwest::blocking::{Client, RequestBuilder, Response};
 use reqwest::header::{ACCEPT, AUTHORIZATION, HeaderMap, USER_AGENT};
 use serde::Deserialize;
@@ -32,6 +33,7 @@ impl HttpWorkflowRepository {
     }
 
     /// Sends the request and remembers the API quota reported in the response.
+    /// An unsuccessful status becomes an error carrying GitHub's message.
     fn send(&self, request: RequestBuilder) -> Result<Response> {
         let response = request.send()?;
         if let Some(rate_limit) = parse_rate_limit(response.headers())
@@ -39,7 +41,17 @@ impl HttpWorkflowRepository {
         {
             *current = Some(rate_limit);
         }
-        Ok(response)
+        if response.status().is_success() {
+            return Ok(response);
+        }
+
+        let status = response.status();
+        let path = response.url().path().to_string();
+        let body = response.text().unwrap_or_default();
+        Err(color_eyre::eyre::eyre!(
+            "{}",
+            describe_api_error(status, &path, &body, &self.account.profile)
+        ))
     }
 
     fn post_request(&self, url: String) -> reqwest::blocking::RequestBuilder {
@@ -50,15 +62,9 @@ impl HttpWorkflowRepository {
             .header(ACCEPT, "application/vnd.github+json")
     }
 
-    /// POSTs without a body; `action` describes the call in the error.
-    fn post_empty(&self, url: String, action: &str) -> Result<()> {
-        let res = self.send(self.post_request(url))?;
-        if !res.status().is_success() {
-            return Err(color_eyre::eyre::eyre!(
-                "Failed to {action}: {}",
-                res.text()?
-            ));
-        }
+    /// POSTs without a body.
+    fn post_empty(&self, url: String) -> Result<()> {
+        self.send(self.post_request(url))?;
         Ok(())
     }
 
@@ -245,7 +251,7 @@ impl WorkflowRepository for HttpWorkflowRepository {
             "{}/repos/{}/{}/actions/jobs/{}/logs",
             self.account.api_base, repo.owner, repo.repo, job_id
         );
-        let response = self.send(self.get_request(url))?.error_for_status()?;
+        let response = self.send(self.get_request(url))?;
         // streamed to disk, the log is never held in memory
         Ok(Logs::from_reader(response)?)
     }
@@ -269,38 +275,29 @@ impl WorkflowRepository for HttpWorkflowRepository {
             .get_request(url)
             .query(&[("ref", reference)])
             .header(ACCEPT, "application/vnd.github.raw+json");
-        let yaml = self.send(request)?.error_for_status()?.text()?;
+        let yaml = self.send(request)?.text()?;
         parse_dispatch_inputs(&yaml)
     }
 
     fn rerun_run(&self, repo: &Repository, run_id: u64) -> Result<()> {
-        self.post_empty(
-            format!(
-                "{}/repos/{}/{}/actions/runs/{}/rerun",
-                self.account.api_base, repo.owner, repo.repo, run_id
-            ),
-            "rerun the run",
-        )
+        self.post_empty(format!(
+            "{}/repos/{}/{}/actions/runs/{}/rerun",
+            self.account.api_base, repo.owner, repo.repo, run_id
+        ))
     }
 
     fn rerun_job(&self, repo: &Repository, job_id: u64) -> Result<()> {
-        self.post_empty(
-            format!(
-                "{}/repos/{}/{}/actions/jobs/{}/rerun",
-                self.account.api_base, repo.owner, repo.repo, job_id
-            ),
-            "rerun the job",
-        )
+        self.post_empty(format!(
+            "{}/repos/{}/{}/actions/jobs/{}/rerun",
+            self.account.api_base, repo.owner, repo.repo, job_id
+        ))
     }
 
     fn rerun_failed_jobs(&self, repo: &Repository, run_id: u64) -> Result<()> {
-        self.post_empty(
-            format!(
-                "{}/repos/{}/{}/actions/runs/{}/rerun-failed-jobs",
-                self.account.api_base, repo.owner, repo.repo, run_id
-            ),
-            "rerun failed jobs",
-        )
+        self.post_empty(format!(
+            "{}/repos/{}/{}/actions/runs/{}/rerun-failed-jobs",
+            self.account.api_base, repo.owner, repo.repo, run_id
+        ))
     }
 
     fn trigger_workflow(
@@ -322,17 +319,33 @@ impl WorkflowRepository for HttpWorkflowRepository {
             body["inputs"] = serde_json::json!(inputs);
         }
 
-        let res = self.send(self.post_request(url).json(&body))?;
-
-        if !res.status().is_success() {
-            return Err(color_eyre::eyre::eyre!(
-                "Failed to trigger workflow: {}",
-                res.text()?
-            ));
-        }
+        self.send(self.post_request(url).json(&body))?;
 
         Ok(())
     }
+}
+
+/// A message for an unsuccessful response: the status, GitHub's own message and,
+/// for the usual causes, a hint on how to fix it.
+fn describe_api_error(status: StatusCode, path: &str, body: &str, profile: &str) -> String {
+    let message = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|json| json["message"].as_str().map(str::to_string))
+        .unwrap_or_else(|| body.trim().chars().take(200).collect());
+    let hint = match status.as_u16() {
+        401 => format!(" (the token of profile '{profile}' is invalid or expired)"),
+        403 => format!(
+            " (the token of profile '{profile}' lacks permission, or it still has to be \
+             authorized for SAML SSO)"
+        ),
+        404 => format!(
+            " (not found, or the token of profile '{profile}' cannot access it: for \
+             organizations with SSO authorize the token, fine-grained tokens need the \
+             organization as resource owner)"
+        ),
+        _ => String::new(),
+    };
+    format!("GitHub returned {status} for {path}: {message}{hint}")
 }
 
 /// Reads GitHub's `X-RateLimit-*` response headers.
@@ -355,6 +368,46 @@ mod tests {
             map.insert(*name, value.parse().unwrap());
         }
         map
+    }
+
+    #[test]
+    fn api_errors_show_status_message_and_hint() {
+        let text = describe_api_error(
+            StatusCode::NOT_FOUND,
+            "/repos/acme/tool/actions/workflows",
+            r#"{"message":"Not Found","documentation_url":"https://docs.github.com/rest","status":"404"}"#,
+            "work",
+        );
+        assert!(text.contains("404 Not Found"), "{text}");
+        assert!(
+            text.contains("/repos/acme/tool/actions/workflows"),
+            "{text}"
+        );
+        assert!(text.contains("Not Found"), "{text}");
+        assert!(
+            text.contains("profile 'work'") && text.contains("SSO"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn api_errors_without_json_use_the_body() {
+        let text = describe_api_error(StatusCode::BAD_GATEWAY, "/x", "  upstream down \n", "p");
+        assert!(text.ends_with(": upstream down"), "{text}");
+    }
+
+    #[test]
+    fn unauthorized_hints_at_the_token() {
+        let text = describe_api_error(
+            StatusCode::UNAUTHORIZED,
+            "/x",
+            r#"{"message":"Bad credentials"}"#,
+            "personal",
+        );
+        assert!(
+            text.contains("Bad credentials") && text.contains("invalid or expired"),
+            "{text}"
+        );
     }
 
     #[test]

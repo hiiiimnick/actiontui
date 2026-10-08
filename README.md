@@ -36,7 +36,7 @@ pat_env = "WORK_GITHUB_TOKEN"   # read the token from this environment variable
 | Field | Meaning |
 | --- | --- |
 | `name` | Name of the profile, shown at the bottom right and used by `--profile` |
-| `url` | The GitHub host, `github.com` by default |
+| `url` | The GitHub host, `github.com` by default. A scheme or a path (e.g. an organization) is ignored, use `owner` to limit a profile to an organization |
 | `pat` | A personal access token (`repo` scope for classic tokens, *Actions: read/write* for fine-grained ones) |
 | `pat_env` | Name of an environment variable holding the token. Wins over `pat` |
 | `owner` | Optional. The profile only applies to repositories of this owner and beats a profile without `owner` |

@@ -181,11 +181,21 @@ fn names(profiles: &[Profile]) -> String {
 }
 
 impl Profile {
-    /// The host without scheme and trailing slashes, lower case.
-    pub fn host(&self) -> String {
+    /// `host[:port]` of `url`, lower case. A scheme and anything after the
+    /// host, such as a path, are ignored.
+    fn authority(&self) -> String {
         let url = self.url.trim();
         let url = url.split_once("://").map_or(url, |(_, rest)| rest);
-        url.trim_end_matches('/').to_ascii_lowercase()
+        let authority = url.split('/').next().unwrap_or(url);
+        authority.to_ascii_lowercase()
+    }
+
+    /// The host without scheme, port and path, lower case.
+    pub fn host(&self) -> String {
+        let authority = self.authority();
+        authority
+            .split_once(':')
+            .map_or(authority.clone(), |(host, _)| host.to_string())
     }
 
     fn matches_host(&self, host: &str) -> bool {
@@ -207,7 +217,7 @@ impl Profile {
         if host == "github.com" || host.ends_with(".ghe.com") {
             format!("https://api.{host}")
         } else {
-            format!("https://{host}/api/v3")
+            format!("https://{}/api/v3", self.authority())
         }
     }
 
@@ -406,6 +416,46 @@ pat_env = "WORK_TOKEN"
         let mut custom = profile("p", "github.example.com", None);
         custom.api_url = Some("https://api.example.com/v3/".into());
         assert_eq!(custom.api_base(), "https://api.example.com/v3");
+    }
+
+    #[test]
+    fn url_is_reduced_to_the_host() {
+        let host = |url: &str| profile("p", url, None).host();
+        assert_eq!(host("github.com"), "github.com");
+        assert_eq!(host("https://GitHub.com/"), "github.com");
+        // a path (e.g. the organization) is not part of the host
+        assert_eq!(
+            host("mercedes-benz.ghe.com/DATIX-FRITZ"),
+            "mercedes-benz.ghe.com"
+        );
+        assert_eq!(
+            host("https://mercedes-benz.ghe.com/DATIX-FRITZ/"),
+            "mercedes-benz.ghe.com"
+        );
+        assert_eq!(host("github.example.com:8443/x"), "github.example.com");
+    }
+
+    #[test]
+    fn a_url_with_a_path_still_matches_and_gets_the_right_api() {
+        let config = config(vec![
+            profile("personal", "github.com", None),
+            profile("work", "mercedes-benz.ghe.com/DATIX-FRITZ", None),
+        ]);
+        assert_eq!(
+            selected(&config, None, "mercedes-benz.ghe.com", "DATIX-FRITZ"),
+            "work"
+        );
+        assert_eq!(
+            profile("work", "mercedes-benz.ghe.com/DATIX-FRITZ", None).api_base(),
+            "https://api.mercedes-benz.ghe.com"
+        );
+    }
+
+    #[test]
+    fn a_port_is_kept_for_the_api_but_not_for_matching() {
+        let p = profile("p", "github.example.com:8443", None);
+        assert_eq!(p.api_base(), "https://github.example.com:8443/api/v3");
+        assert!(p.matches_host("github.example.com"));
     }
 
     #[test]
