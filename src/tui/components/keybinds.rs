@@ -82,11 +82,16 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
-/// `API 4980/5000`, colored by how much is left. When the quota runs low the
-/// time until it is renewed is shown too.
+/// `API 2%`: the used part of the quota, colored by how much is left. When the
+/// quota runs low the time until it is renewed is shown too.
 fn rate_limit_span(rate: &RateLimit, now: chrono::DateTime<Utc>) -> Span<'static> {
     let level = rate.level();
-    let mut text = format!(" API {}/{}", rate.remaining, rate.limit);
+    let used = rate.used_percent();
+    let mut text = if used > 0.0 && used < 0.5 {
+        " API <1%".to_string()
+    } else {
+        format!(" API {used:.0}%")
+    };
     if level != RateLimitLevel::Ok
         && let Some(left) = rate.time_until_reset(now)
     {
@@ -120,10 +125,24 @@ mod tests {
     }
 
     #[test]
+    fn shows_the_used_percentage() {
+        let now = rate(0, None).1;
+        let at = |remaining| {
+            rate_limit_span(&rate(remaining, None).0, now)
+                .content
+                .to_string()
+        };
+        assert_eq!(at(4920), " API 2% ");
+        assert_eq!(at(2500), " API 50% ");
+        // never claims 0% while something is used
+        assert_eq!(at(4999), " API <1% ");
+    }
+
+    #[test]
     fn healthy_quota_is_plain() {
-        let (rate, now) = rate(4980, Some(600));
+        let (rate, now) = rate(5000, Some(600));
         let span = rate_limit_span(&rate, now);
-        assert_eq!(span.content, " API 4980/5000 ");
+        assert_eq!(span.content, " API 0% ");
         assert_eq!(span.style.fg, Some(Color::Gray));
     }
 
@@ -131,7 +150,7 @@ mod tests {
     fn low_quota_warns_and_shows_the_reset() {
         let (rate, now) = rate(300, Some(601));
         let span = rate_limit_span(&rate, now);
-        assert_eq!(span.content, " API 300/5000 (resets in 11m) ");
+        assert_eq!(span.content, " API 94% (resets in 11m) ");
         assert_eq!(span.style.fg, Some(Color::Yellow));
     }
 
@@ -139,13 +158,13 @@ mod tests {
     fn exhausted_quota_is_red() {
         let (rate, now) = rate(0, Some(30));
         let span = rate_limit_span(&rate, now);
-        assert_eq!(span.content, " API 0/5000 (resets in 1m) ");
+        assert_eq!(span.content, " API 100% (resets in 1m) ");
         assert_eq!(span.style.fg, Some(Color::Red));
     }
 
     #[test]
     fn low_quota_without_reset_time() {
         let (rate, now) = rate(10, None);
-        assert_eq!(rate_limit_span(&rate, now).content, " API 10/5000 ");
+        assert_eq!(rate_limit_span(&rate, now).content, " API 100% ");
     }
 }

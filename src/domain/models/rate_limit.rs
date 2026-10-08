@@ -18,6 +18,15 @@ pub enum RateLimitLevel {
 }
 
 impl RateLimit {
+    /// The part of the quota that is used up, 0.0 to 100.0.
+    pub fn used_percent(&self) -> f64 {
+        if self.limit == 0 {
+            return 0.0;
+        }
+        let used = self.limit.saturating_sub(self.remaining);
+        f64::from(used) / f64::from(self.limit) * 100.0
+    }
+
     pub fn level(&self) -> RateLimitLevel {
         if self.remaining == 0 {
             RateLimitLevel::Exhausted
@@ -55,6 +64,21 @@ mod tests {
         assert_eq!(limit(500).level(), RateLimitLevel::Low);
         assert_eq!(limit(1).level(), RateLimitLevel::Low);
         assert_eq!(limit(0).level(), RateLimitLevel::Exhausted);
+    }
+
+    #[test]
+    fn used_percent() {
+        assert_eq!(limit(5000).used_percent(), 0.0);
+        assert_eq!(limit(4500).used_percent(), 10.0);
+        assert_eq!(limit(0).used_percent(), 100.0);
+        // more remaining than the limit never gives a negative value
+        assert_eq!(limit(6000).used_percent(), 0.0);
+        let unlimited = RateLimit {
+            limit: 0,
+            remaining: 0,
+            reset_at: None,
+        };
+        assert_eq!(unlimited.used_percent(), 0.0);
     }
 
     #[test]
