@@ -1,7 +1,7 @@
 use color_eyre::eyre::{Result, eyre};
 use std::process::Command;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Repository {
     /// The GitHub host of the remote, lower case, e.g. `github.com`.
     pub host: String,

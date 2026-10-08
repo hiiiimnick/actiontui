@@ -11,7 +11,27 @@ Run it inside a git repository. The repo is taken from `remote.origin.url`.
 ```sh
 cargo run --release
 cargo run --release -- --profile work   # pick the account explicitly
+cargo run --release -- global           # start with all your repositories
 ```
+
+### Global mode
+
+`actiontui global` does not need a git repository. It starts with a searchable
+list of every repository the tokens of your profiles can access (archived ones
+are left out), most recently active first. Use `--profile <name>` to list only
+one account. A profile that cannot be loaded is reported below the list and
+does not stop the others.
+
+| Key | Action |
+| --- | --- |
+| `j` `k` | Move down / up |
+| `g` `G` | First / last |
+| `/` | Search: every word has to occur in `owner/repo`, the profile or the description. `Enter` ends the search, `Esc` clears it |
+| `Enter` | Open the repository, with the account it was found with |
+| `Esc` | In a repository: back to the list. In the list: clear the search |
+
+Opening a repository shows the usual panes. The repository and profile are
+shown at the bottom right.
 
 ## Configuration
 
@@ -83,10 +103,20 @@ Starting a run needs `workflow_dispatch` in the workflow's `on:` triggers and a 
 | `n` | Start a new run of the selected workflow (opens the run form) |
 | `R` | Runs: rerun the failed jobs of the selected run. Jobs: rerun the selected job |
 | `A` | Runs: rerun all jobs of the selected run |
+| `a` / `d` | Runs and jobs: approve / reject the deployments the run is waiting on (asks first) |
 | `r` | Refresh the current list |
+| `Esc` | Global mode: back to the list of all repositories |
 | `q` / `Ctrl`+`c` | Quit |
 
-Every rerun asks for confirmation first: `y` confirms, `n`, `q` or `Esc` cancels.
+Every rerun, approval and rejection asks for confirmation first: `y` confirms, `n`, `q` or `Esc` cancels.
+
+## Bottom line
+
+The left side shows the keys of the focused pane, or the result of your last
+action (green for success, red for an error). The right side shows the
+repository, the profile in use and how much of the GitHub API quota is used,
+for example `owner/repo work API 2%`. The percentage turns yellow from 90% and
+red when the quota is used up, and then shows when it is renewed.
 
 ## License
 

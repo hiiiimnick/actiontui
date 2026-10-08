@@ -1,16 +1,20 @@
+pub mod deployment;
 pub mod job;
 pub mod logs;
 pub mod rate_limit;
 pub mod repository;
+pub mod repository_summary;
 pub mod run;
 pub mod step;
 pub mod workflow;
 pub mod workflow_input;
 
+pub use deployment::{PendingDeployment, ReviewState, reviewable};
 pub use job::Job;
 pub use logs::{LogRange, Logs};
 pub use rate_limit::{RateLimit, RateLimitLevel};
 pub use repository::Repository;
+pub use repository_summary::RepositorySummary;
 pub use run::Run;
 pub use step::Step;
 pub use workflow::Workflow;

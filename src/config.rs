@@ -69,6 +69,8 @@ impl Default for Config {
 #[derive(Clone)]
 pub struct Account {
     pub profile: String,
+    /// Host of the account, e.g. `github.com`.
+    pub host: String,
     pub api_base: String,
     pub token: String,
 }
@@ -78,6 +80,7 @@ impl fmt::Debug for Account {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Account")
             .field("profile", &self.profile)
+            .field("host", &self.host)
             .field("api_base", &self.api_base)
             .field("token", &"<redacted>")
             .finish()
@@ -249,6 +252,7 @@ impl Profile {
     pub fn account(&self) -> Result<Account> {
         Ok(Account {
             profile: self.name.clone(),
+            host: self.host(),
             api_base: self.api_base(),
             token: self.token()?,
         })

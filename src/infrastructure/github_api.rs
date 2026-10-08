@@ -1,7 +1,10 @@
 use crate::config::Account;
 use crate::domain::models::Logs;
-use crate::domain::models::{RateLimit, Repository, Run, Workflow, WorkflowInput};
-use crate::domain::repositories::WorkflowRepository;
+use crate::domain::models::{
+    PendingDeployment, RateLimit, Repository, RepositorySummary, ReviewState, Run, Workflow,
+    WorkflowInput,
+};
+use crate::domain::repositories::{RepositoryCatalog, WorkflowRepository};
 use crate::domain::{Job, Step};
 use crate::infrastructure::map_optional_time;
 use crate::infrastructure::workflow_definition::parse_dispatch_inputs;
@@ -138,6 +141,36 @@ struct GithubWorkflowRunJob {
 #[derive(Deserialize)]
 struct GithubJobResponse {
     jobs: Vec<GithubWorkflowRunJob>,
+}
+
+/// GitHub's maximum page size, and a safety limit on the number of pages.
+const REPOSITORIES_PER_PAGE: usize = 100;
+const MAX_REPOSITORY_PAGES: usize = 50;
+
+impl RepositoryCatalog for HttpWorkflowRepository {
+    fn list_repositories(&self) -> Result<Vec<RepositorySummary>> {
+        let url = format!("{}/user/repos", self.account.api_base);
+        let mut repositories = Vec::new();
+        for page in 1..=MAX_REPOSITORY_PAGES {
+            let request = self.get_request(url.clone()).query(&[
+                ("per_page", REPOSITORIES_PER_PAGE.to_string()),
+                ("page", page.to_string()),
+                ("sort", "pushed".to_string()),
+                ("direction", "desc".to_string()),
+                (
+                    "affiliation",
+                    "owner,collaborator,organization_member".to_string(),
+                ),
+            ]);
+            let body = self.send(request)?.text()?;
+            let (found, listed) = parse_repositories(&body, &self.account.host)?;
+            repositories.extend(found);
+            if listed < REPOSITORIES_PER_PAGE {
+                break;
+            }
+        }
+        Ok(repositories)
+    }
 }
 
 impl WorkflowRepository for HttpWorkflowRepository {
@@ -300,6 +333,36 @@ impl WorkflowRepository for HttpWorkflowRepository {
         parse_dispatch_inputs(&yaml)
     }
 
+    fn get_pending_deployments(
+        &self,
+        repo: &Repository,
+        run_id: u64,
+    ) -> Result<Vec<PendingDeployment>> {
+        let url = format!(
+            "{}/repos/{}/{}/actions/runs/{}/pending_deployments",
+            self.account.api_base, repo.owner, repo.repo, run_id
+        );
+        let body = self.send(self.get_request(url))?.text()?;
+        parse_pending_deployments(&body)
+    }
+
+    fn review_deployments(
+        &self,
+        repo: &Repository,
+        run_id: u64,
+        environment_ids: &[u64],
+        state: ReviewState,
+        comment: &str,
+    ) -> Result<()> {
+        let url = format!(
+            "{}/repos/{}/{}/actions/runs/{}/pending_deployments",
+            self.account.api_base, repo.owner, repo.repo, run_id
+        );
+        let body = review_body(environment_ids, state, comment);
+        self.send(self.post_request(url).json(&body))?;
+        Ok(())
+    }
+
     fn rerun_run(&self, repo: &Repository, run_id: u64) -> Result<()> {
         self.post_empty(format!(
             "{}/repos/{}/{}/actions/runs/{}/rerun",
@@ -373,6 +436,72 @@ fn describe_api_error(status: StatusCode, path: &str, body: &str, profile: &str)
     format!("GitHub returned {status} for {path}: {message}{hint}")
 }
 
+#[derive(Deserialize)]
+struct GithubPendingDeployment {
+    environment: GithubEnvironment,
+    current_user_can_approve: bool,
+}
+
+#[derive(Deserialize)]
+struct GithubEnvironment {
+    id: u64,
+    name: String,
+}
+
+fn parse_pending_deployments(body: &str) -> Result<Vec<PendingDeployment>> {
+    let deployments: Vec<GithubPendingDeployment> = serde_json::from_str(body)?;
+    Ok(deployments
+        .into_iter()
+        .map(|d| PendingDeployment {
+            environment_id: d.environment.id,
+            environment: d.environment.name,
+            can_approve: d.current_user_can_approve,
+        })
+        .collect())
+}
+
+/// The request body to approve or reject deployments.
+fn review_body(environment_ids: &[u64], state: ReviewState, comment: &str) -> serde_json::Value {
+    serde_json::json!({
+        "environment_ids": environment_ids,
+        "state": state.as_str(),
+        "comment": comment,
+    })
+}
+
+#[derive(Deserialize)]
+struct GithubRepository {
+    name: String,
+    owner: GithubOwner,
+    private: bool,
+    #[serde(default)]
+    archived: bool,
+    #[serde(default)]
+    disabled: bool,
+    description: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GithubOwner {
+    login: String,
+}
+
+/// The usable repositories of one page and how many the page listed in total.
+fn parse_repositories(body: &str, host: &str) -> Result<(Vec<RepositorySummary>, usize)> {
+    let listed: Vec<GithubRepository> = serde_json::from_str(body)?;
+    let count = listed.len();
+    let usable = listed
+        .into_iter()
+        .filter(|r| !r.archived && !r.disabled)
+        .map(|r| RepositorySummary {
+            repository: Repository::new(host.to_string(), r.owner.login, r.name),
+            private: r.private,
+            description: r.description.filter(|d| !d.trim().is_empty()),
+        })
+        .collect();
+    Ok((usable, count))
+}
+
 /// Reads GitHub's `X-RateLimit-*` response headers.
 fn parse_rate_limit(headers: &HeaderMap) -> Option<RateLimit> {
     let number = |name: &str| headers.get(name)?.to_str().ok()?.parse::<i64>().ok();
@@ -444,6 +573,81 @@ mod tests {
             text.contains("Bad credentials") && text.contains("invalid or expired"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn parses_pending_deployments() {
+        let body = r#"[
+            {"environment": {"id": 161088068, "node_id": "x", "name": "staging", "url": "u"},
+             "wait_timer": 30, "wait_timer_started_at": null,
+             "current_user_can_approve": true,
+             "reviewers": [{"type": "User", "reviewer": {"id": 1, "login": "octocat"}}]},
+            {"environment": {"id": 7, "name": "prod"}, "current_user_can_approve": false,
+             "reviewers": []}
+        ]"#;
+        let deployments = parse_pending_deployments(body).unwrap();
+        assert_eq!(
+            deployments,
+            vec![
+                PendingDeployment {
+                    environment_id: 161088068,
+                    environment: "staging".into(),
+                    can_approve: true,
+                },
+                PendingDeployment {
+                    environment_id: 7,
+                    environment: "prod".into(),
+                    can_approve: false,
+                },
+            ]
+        );
+        assert!(parse_pending_deployments("[]").unwrap().is_empty());
+        assert!(parse_pending_deployments("{\"message\":\"x\"}").is_err());
+    }
+
+    #[test]
+    fn builds_the_review_body() {
+        let body = review_body(&[1, 2], ReviewState::Rejected, "not now");
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "environment_ids": [1, 2],
+                "state": "rejected",
+                "comment": "not now",
+            })
+        );
+    }
+
+    #[test]
+    fn parses_repositories_and_skips_unusable_ones() {
+        let body = r#"[
+            {"name": "tool", "full_name": "me/tool", "owner": {"login": "me"},
+             "private": true, "archived": false, "disabled": false,
+             "description": "A tool"},
+            {"name": "old", "owner": {"login": "me"}, "private": false,
+             "archived": true, "disabled": false, "description": null},
+            {"name": "off", "owner": {"login": "me"}, "private": false,
+             "archived": false, "disabled": true, "description": null},
+            {"name": "api", "owner": {"login": "acme"}, "private": false,
+             "description": "  "}
+        ]"#;
+        let (repositories, listed) = parse_repositories(body, "github.com").unwrap();
+        assert_eq!(listed, 4);
+        assert_eq!(repositories.len(), 2);
+        assert_eq!(
+            repositories[0].repository,
+            Repository::new("github.com".into(), "me".into(), "tool".into())
+        );
+        assert!(repositories[0].private);
+        assert_eq!(repositories[0].description.as_deref(), Some("A tool"));
+        assert_eq!(repositories[1].repository.owner, "acme");
+        assert_eq!(repositories[1].description, None);
+    }
+
+    #[test]
+    fn repository_errors_are_errors() {
+        assert!(parse_repositories(r#"{"message":"Bad credentials"}"#, "github.com").is_err());
+        assert_eq!(parse_repositories("[]", "github.com").unwrap().1, 0);
     }
 
     #[test]

@@ -5,10 +5,18 @@ use ratatui::{
 
 use crate::tui::{
     app::App,
-    components::{joblist, keybinds, logs, popup, runlist, steps, workflowlist},
+    components::{joblist, keybinds, logs, popup, repositories, runlist, steps, workflowlist},
 };
 
 pub fn ui(app: &mut App, frame: &mut Frame) {
+    if app.in_picker {
+        let [list, footer] =
+            Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(frame.area());
+        repositories::render(app, frame, list);
+        keybinds::render(app, frame, footer);
+        return;
+    }
+
     let main_rects = Layout::vertical([
         Constraint::Max(3),
         Constraint::Percentage(20),

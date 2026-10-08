@@ -11,12 +11,20 @@ use crate::domain::{RateLimit, RateLimitLevel};
 use crate::tui::app::{App, CurrentFocus};
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
-    let mut indicator = vec![Span::styled(
-        format!(" {} ", app.profile_name),
-        Style::default().fg(Color::DarkGray),
-    )];
-    if let Some(rate) = app.workflowrepo.rate_limit() {
-        indicator.push(rate_limit_span(&rate, Utc::now()));
+    // the picker lists the repositories of all accounts, none is active yet
+    let mut indicator = Vec::new();
+    if !app.in_picker {
+        indicator.push(Span::styled(
+            format!(" {}/{}", app.repo.owner, app.repo.repo),
+            Style::default().fg(Color::Cyan),
+        ));
+        indicator.push(Span::styled(
+            format!(" {} ", app.profile_name),
+            Style::default().fg(Color::DarkGray),
+        ));
+        if let Some(rate) = app.workflowrepo.rate_limit() {
+            indicator.push(rate_limit_span(&rate, Utc::now()));
+        }
     }
     let indicator = Line::from(indicator);
     let [area, indicator_area] = Layout::horizontal([
@@ -37,6 +45,25 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         return;
     }
 
+    let global_mode = app.picker.is_some();
+    let picker_hints: &[(&str, &str)] = match app.picker.as_ref() {
+        Some(picker) if picker.searching => {
+            &[("Enter", "done"), ("Esc", "clear"), ("C-u", "clear text")]
+        }
+        _ => &[
+            ("j/k", "move"),
+            ("g/G", "first/last"),
+            ("Enter", "open"),
+            ("/", "search"),
+            ("Esc", "clear search"),
+            ("q", "quit"),
+        ],
+    };
+    if app.in_picker {
+        render_hints(frame, area, picker_hints, &[]);
+        return;
+    }
+
     let context: &[(&str, &str)] = match app.current_focus {
         CurrentFocus::Workflows => &[
             ("j/k", "move"),
@@ -50,12 +77,14 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             ("n", "new run"),
             ("R", "rerun failed"),
             ("A", "rerun all"),
+            ("a/d", "approve/reject"),
             ("r", "refresh"),
         ],
         CurrentFocus::Jobs => &[
             ("j/k", "move"),
             ("Enter", "steps"),
             ("R", "rerun job"),
+            ("a/d", "approve/reject"),
             ("r", "refresh"),
         ],
         CurrentFocus::Steps => &[("j/k", "move"), ("Enter", "logs"), ("r", "refresh")],
@@ -65,8 +94,15 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             ("g/G", "top/bottom"),
         ],
     };
-    let global: &[(&str, &str)] = &[("1-5", "focus"), ("q", "quit")];
+    let global: &[(&str, &str)] = if global_mode {
+        &[("1-5", "focus"), ("Esc", "repositories"), ("q", "quit")]
+    } else {
+        &[("1-5", "focus"), ("q", "quit")]
+    };
+    render_hints(frame, area, context, global);
+}
 
+fn render_hints(frame: &mut Frame, area: Rect, context: &[(&str, &str)], global: &[(&str, &str)]) {
     let key_style = Style::default()
         .fg(Color::Yellow)
         .add_modifier(Modifier::BOLD);

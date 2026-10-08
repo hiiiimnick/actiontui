@@ -1,4 +1,4 @@
-use color_eyre::eyre::Error;
+use color_eyre::eyre::{Error, eyre};
 use std::collections::HashMap;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
@@ -9,10 +9,11 @@ use tui_widget_list;
 
 use crate::config::Account;
 use crate::domain::{
-    Job, Logs, Repository, Run, Step, StepLogIndex, StepLogLocator, Workflow, WorkflowInput,
-    WorkflowRepository,
+    Job, Logs, Repository, ReviewState, Run, Step, StepLogIndex, StepLogLocator, Workflow,
+    WorkflowInput, WorkflowRepository, reviewable,
 };
 use crate::infrastructure::HttpWorkflowRepository;
+use crate::tui::repo_picker::{PickerAction, RepoEntry, RepoPicker};
 use crate::tui::run_form::{FormAction, RunForm};
 use crate::tui::ui;
 
@@ -49,6 +50,12 @@ enum PendingAction {
         job_id: u64,
         name: String,
     },
+    ReviewDeployments {
+        run_id: u64,
+        title: String,
+        environment_ids: Vec<u64>,
+        state: ReviewState,
+    },
 }
 
 /// A question the user has to answer with yes or no before the action runs.
@@ -75,6 +82,12 @@ pub struct App {
     pub current_focus: CurrentFocus,
     pub mode: Mode,
     pub run_form: Option<RunForm>,
+    /// The list of all repositories, in global mode (`actiontui global`).
+    pub picker: Option<RepoPicker>,
+    /// Whether the picker is shown instead of the panes of a repository.
+    pub in_picker: bool,
+    /// The accounts a repository of the picker can be opened with.
+    accounts: Vec<Account>,
     pub confirmation: Option<Confirmation>,
     pub message: Option<StatusMessage>,
     pub workflowrepo: Box<dyn WorkflowRepository>,
@@ -106,20 +119,55 @@ impl App {
         let profile_name = account.profile.clone();
         let workflow_repo = Box::new(HttpWorkflowRepository::new(account));
         let workflows = workflow_repo.get_workflows(&repo)?;
+        Ok(Self::build(workflow_repo, profile_name, repo, workflows))
+    }
+
+    /// Starts with the list of all `entries`; `accounts` are used to open them.
+    /// `notices` tell which profiles could not be loaded.
+    pub fn new_global(
+        accounts: Vec<Account>,
+        entries: Vec<RepoEntry>,
+        notices: Vec<String>,
+    ) -> Result<App, Error> {
+        let first = accounts
+            .first()
+            .ok_or_else(|| eyre!("No profile with a usable token"))?;
+        // no repository is open yet, the panes are not shown before one is chosen
+        let mut app = Self::build(
+            Box::new(HttpWorkflowRepository::new(first.clone())),
+            first.profile.clone(),
+            Repository::default(),
+            Vec::new(),
+        );
+        app.picker = Some(RepoPicker::new(entries, notices));
+        app.in_picker = true;
+        app.accounts = accounts;
+        Ok(app)
+    }
+
+    fn build(
+        workflowrepo: Box<dyn WorkflowRepository>,
+        profile_name: String,
+        repo: Repository,
+        workflows: Vec<Workflow>,
+    ) -> App {
         let mut workflow_state = tui_widget_list::ListState::default();
         if !workflows.is_empty() {
             workflow_state.select(Some(0));
         }
 
-        Ok(App {
+        App {
             repo,
             profile_name,
-            workflowrepo: workflow_repo,
+            workflowrepo,
             workflows,
             workflow_state,
             current_focus: CurrentFocus::Workflows,
             mode: Mode::Navigation,
             run_form: None,
+            picker: None,
+            in_picker: false,
+            accounts: Vec::new(),
             confirmation: None,
             message: None,
             selected_workflow_id: None,
@@ -135,8 +183,44 @@ impl App {
             selected_step: None,
             log_lines: Vec::new(),
             logs_offset: 0,
-        })
+        }
     }
+
+    /// Opens a repository of the picker: its workflows are loaded with the
+    /// account the repository was found with and everything else is reset.
+    fn open_repository(&mut self, entry: RepoEntry) -> Result<(), Error> {
+        let account = self
+            .accounts
+            .iter()
+            .find(|a| a.profile == entry.profile)
+            .cloned()
+            .ok_or_else(|| eyre!("Unknown profile '{}'", entry.profile))?;
+        let repo = entry.summary.repository;
+        let profile_name = account.profile.clone();
+        let workflowrepo = Box::new(HttpWorkflowRepository::new(account));
+        // a failure leaves the picker as it was
+        let workflows = workflowrepo.get_workflows(&repo)?;
+
+        let mut fresh = Self::build(workflowrepo, profile_name, repo, workflows);
+        fresh.picker = self.picker.take();
+        fresh.accounts = std::mem::take(&mut self.accounts);
+        *self = fresh;
+        Ok(())
+    }
+
+    fn handle_key_input_picker(&mut self, key: KeyEvent) -> Result<bool, Error> {
+        let Some(picker) = self.picker.as_mut() else {
+            self.in_picker = false;
+            return Ok(false);
+        };
+        match picker.handle_key(key) {
+            PickerAction::None => {}
+            PickerAction::Quit => return Ok(true),
+            PickerAction::Open(entry) => self.open_repository(entry)?,
+        }
+        Ok(false)
+    }
+
     pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<bool, Error>
     where
         Error: From<B::Error>,
@@ -169,6 +253,9 @@ impl App {
             return Ok(true);
         }
         self.message = None;
+        if self.in_picker {
+            return self.handle_key_input_picker(key);
+        }
         match self.mode {
             Mode::Input => self.handle_key_input_form(key),
             Mode::Confirm => self.handle_key_input_confirm(key),
@@ -295,6 +382,12 @@ impl App {
                         PendingAction::RerunJob { job_id, name } => {
                             self.execute_job_rerun(job_id, &name)
                         }
+                        PendingAction::ReviewDeployments {
+                            run_id,
+                            title,
+                            environment_ids,
+                            state,
+                        } => self.execute_review(run_id, &title, &environment_ids, state),
                     }
                 }
             }
@@ -304,6 +397,88 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// Asks to approve or reject the deployments `run_id` is waiting on, after
+    /// checking that there are some and that the user may review them.
+    fn start_review(
+        &mut self,
+        run_id: u64,
+        title: String,
+        state: ReviewState,
+    ) -> Result<(), Error> {
+        let pending = self
+            .workflowrepo
+            .get_pending_deployments(&self.repo, run_id)?;
+        if pending.is_empty() {
+            self.message = Some(StatusMessage {
+                text: format!("'{title}' has no deployment waiting for approval"),
+                is_error: true,
+            });
+            return Ok(());
+        }
+        let Some(reviewable) = reviewable(&pending) else {
+            let names: Vec<&str> = pending.iter().map(|d| d.environment.as_str()).collect();
+            self.message = Some(StatusMessage {
+                text: format!(
+                    "You are not a required reviewer for {} of '{title}'",
+                    names.join(", ")
+                ),
+                is_error: true,
+            });
+            return Ok(());
+        };
+
+        let names: Vec<&str> = reviewable.iter().map(|d| d.environment.as_str()).collect();
+        let environment_ids = reviewable.iter().map(|d| d.environment_id).collect();
+        self.ask(
+            format!(
+                "{} deployment of '{title}' to {}?",
+                state.verb(),
+                names.join(", ")
+            ),
+            PendingAction::ReviewDeployments {
+                run_id,
+                title,
+                environment_ids,
+                state,
+            },
+        );
+        Ok(())
+    }
+
+    fn execute_review(
+        &mut self,
+        run_id: u64,
+        title: &str,
+        environment_ids: &[u64],
+        state: ReviewState,
+    ) {
+        let result =
+            self.workflowrepo
+                .review_deployments(&self.repo, run_id, environment_ids, state, "");
+        if result.is_ok() {
+            // the run goes on (or stops) right away, show its new state
+            if let Some(workflow_id) = self.selected_workflow_id
+                && let Ok(runs) = self.workflowrepo.get_runs(&self.repo, workflow_id)
+            {
+                self.runs = runs;
+            }
+            if self.selected_run_id == Some(run_id)
+                && let Ok(jobs) = self.workflowrepo.get_jobs(&self.repo, run_id)
+            {
+                self.jobs = jobs;
+            }
+        }
+        let done = match state {
+            ReviewState::Approved => "Approved",
+            ReviewState::Rejected => "Rejected",
+        };
+        self.report(
+            result,
+            format!("{done} deployment of '{title}'"),
+            format!("Could not {} deployment of '{title}'", state.as_str()),
+        );
     }
 
     fn execute_rerun(&mut self, run_id: u64, title: &str, scope: RerunScope) {
@@ -403,6 +578,10 @@ impl App {
 
     fn handle_key_input_navigation(&mut self, key: KeyEvent) -> Result<bool, Error> {
         match key.code {
+            // back to the list of all repositories, in global mode
+            KeyCode::Esc if self.picker.is_some() => {
+                self.in_picker = true;
+            }
             KeyCode::Char('q') => {
                 return Ok(true);
             }
@@ -480,6 +659,14 @@ impl App {
                     }
                     KeyCode::Char('R') => self.rerun_selected_run(RerunScope::FailedJobs),
                     KeyCode::Char('A') => self.rerun_selected_run(RerunScope::All),
+                    KeyCode::Char('a') | KeyCode::Char('d') => {
+                        let state = review_state_of(key.code);
+                        if let Some(run) = self.run_state.selected().and_then(|i| self.runs.get(i))
+                        {
+                            let (run_id, title) = (run.id, run.display_title.clone());
+                            self.start_review(run_id, title, state)?;
+                        }
+                    }
                     KeyCode::Enter => {
                         if let Some(index) = self.run_state.selected()
                             && let Some(run) = self.runs.get(index)
@@ -497,6 +684,17 @@ impl App {
                 navigate_list(key, &mut self.job_state);
                 match key.code {
                     KeyCode::Char('R') => self.rerun_selected_job(),
+                    KeyCode::Char('a') | KeyCode::Char('d') => {
+                        let state = review_state_of(key.code);
+                        if let Some(run) = self
+                            .runs
+                            .iter()
+                            .find(|r| Some(r.id) == self.selected_run_id)
+                        {
+                            let (run_id, title) = (run.id, run.display_title.clone());
+                            self.start_review(run_id, title, state)?;
+                        }
+                    }
                     KeyCode::Char('r') => {
                         if let Some(run_id) = &self.selected_run_id {
                             self.jobs = self.workflowrepo.get_jobs(&self.repo, *run_id)?;
@@ -580,6 +778,15 @@ impl App {
         self.job_state = ListState::default();
         self.run_state = ListState::default();
         self.step_state = ListState::default();
+    }
+}
+
+/// `a` approves, `d` rejects.
+fn review_state_of(code: KeyCode) -> ReviewState {
+    if code == KeyCode::Char('a') {
+        ReviewState::Approved
+    } else {
+        ReviewState::Rejected
     }
 }
 

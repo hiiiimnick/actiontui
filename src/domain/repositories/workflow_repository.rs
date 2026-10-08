@@ -1,6 +1,8 @@
 use std::{collections::HashMap, fmt::Debug};
 
-use crate::domain::models::{Job, Logs, RateLimit, Repository, Run, Workflow, WorkflowInput};
+use crate::domain::models::{
+    Job, Logs, PendingDeployment, RateLimit, Repository, ReviewState, Run, Workflow, WorkflowInput,
+};
 use color_eyre::Result;
 
 pub trait WorkflowRepository: Debug {
@@ -18,6 +20,21 @@ pub trait WorkflowRepository: Debug {
         workflow: &Workflow,
         reference: &str,
     ) -> Result<Vec<WorkflowInput>>;
+    /// The environments `run_id` is waiting to deploy to until they are approved.
+    fn get_pending_deployments(
+        &self,
+        repo: &Repository,
+        run_id: u64,
+    ) -> Result<Vec<PendingDeployment>>;
+    /// Approves or rejects the deployments to `environment_ids` of `run_id`.
+    fn review_deployments(
+        &self,
+        repo: &Repository,
+        run_id: u64,
+        environment_ids: &[u64],
+        state: ReviewState,
+        comment: &str,
+    ) -> Result<()>;
     /// Runs every job of `run_id` again.
     fn rerun_run(&self, repo: &Repository, run_id: u64) -> Result<()>;
     /// Runs `job_id` (and the jobs depending on it) again.
