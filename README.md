@@ -51,8 +51,12 @@ Starting a run needs `workflow_dispatch` in the workflow's `on:` triggers and a 
 | `g` / `G` | Jump to top / bottom of the logs |
 | `Enter` | Open the selected item (workflow → runs → jobs → steps → logs) |
 | `n` | Start a new run of the selected workflow (opens the run form) |
+| `R` | Runs: rerun the failed jobs of the selected run. Jobs: rerun the selected job |
+| `A` | Runs: rerun all jobs of the selected run |
 | `r` | Refresh the current list |
 | `q` / `Ctrl`+`c` | Quit |
+
+Every rerun asks for confirmation first: `y` confirms, `n`, `q` or `Esc` cancels.
 
 ## License
 

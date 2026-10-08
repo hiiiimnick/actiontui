@@ -12,11 +12,28 @@ use crate::tui::{
     run_form::{Field, RunForm},
 };
 
-/// The form shown to start a new run.
+/// The popup of the current mode: the run form or a confirmation.
 pub fn render(app: &App, frame: &mut Frame) {
-    if let (Mode::Input, Some(form)) = (&app.mode, &app.run_form) {
-        render_form(form, frame);
+    match (&app.mode, &app.run_form, &app.confirmation) {
+        (Mode::Input, Some(form), _) => render_form(form, frame),
+        (Mode::Confirm, _, Some(confirmation)) => render_confirmation(&confirmation.prompt, frame),
+        _ => {}
     }
+}
+
+fn render_confirmation(prompt: &str, frame: &mut Frame) {
+    let width = (prompt.chars().count() as u16 + 4).max(30);
+    let area = centered(frame.area(), width, 3);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(Line::from(" Confirm ").centered())
+        .title_bottom(Line::from(" y yes  n no ").right_aligned());
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(Line::from(prompt.to_string()).centered()).block(block),
+        area,
+    );
 }
 
 fn render_form(form: &RunForm, frame: &mut Frame) {
@@ -227,6 +244,21 @@ mod tests {
         let text = rows.join("\n");
         assert!(text.contains("> input9"), "{text}");
         assert!(!text.contains("branch"), "{text}");
+    }
+
+    #[test]
+    fn renders_the_confirmation() {
+        let mut terminal = Terminal::new(TestBackend::new(80, 10)).unwrap();
+        terminal
+            .draw(|f| render_confirmation("Rerun all jobs of 'CI'?", f))
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let text: String = (0..10)
+            .flat_map(|y| (0..80).map(move |x| (x, y)))
+            .map(|(x, y)| buffer[(x, y)].symbol().to_string())
+            .collect();
+        assert!(text.contains("Rerun all jobs of 'CI'?"));
+        assert!(text.contains("y yes  n no"));
     }
 
     #[test]
