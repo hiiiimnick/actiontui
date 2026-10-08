@@ -7,7 +7,7 @@ use ratatui::backend::Backend;
 use ratatui::widgets::{List, ListState};
 use tui_widget_list;
 
-use crate::Config;
+use crate::config::Account;
 use crate::domain::{
     Job, Logs, Repository, Run, Step, StepLogIndex, StepLogLocator, Workflow, WorkflowInput,
     WorkflowRepository,
@@ -70,6 +70,8 @@ pub enum CurrentFocus {
 #[derive(Debug)]
 pub struct App {
     pub repo: Repository,
+    /// The profile the requests are made with.
+    pub profile_name: String,
     pub current_focus: CurrentFocus,
     pub mode: Mode,
     pub run_form: Option<RunForm>,
@@ -100,8 +102,9 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(cfg: Config, repo: Repository) -> Result<App, Error> {
-        let workflow_repo = Box::new(HttpWorkflowRepository::new(cfg));
+    pub fn new(account: Account, repo: Repository) -> Result<App, Error> {
+        let profile_name = account.profile.clone();
+        let workflow_repo = Box::new(HttpWorkflowRepository::new(account));
         let workflows = workflow_repo.get_workflows(&repo)?;
         let mut workflow_state = tui_widget_list::ListState::default();
         if !workflows.is_empty() {
@@ -110,6 +113,7 @@ impl App {
 
         Ok(App {
             repo,
+            profile_name,
             workflowrepo: workflow_repo,
             workflows,
             workflow_state,

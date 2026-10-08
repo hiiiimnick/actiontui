@@ -11,18 +11,20 @@ use crate::domain::{RateLimit, RateLimitLevel};
 use crate::tui::app::{App, CurrentFocus};
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
-    let indicator = app
-        .workflowrepo
-        .rate_limit()
-        .map(|rate| rate_limit_span(&rate, Utc::now()));
+    let mut indicator = vec![Span::styled(
+        format!(" {} ", app.profile_name),
+        Style::default().fg(Color::DarkGray),
+    )];
+    if let Some(rate) = app.workflowrepo.rate_limit() {
+        indicator.push(rate_limit_span(&rate, Utc::now()));
+    }
+    let indicator = Line::from(indicator);
     let [area, indicator_area] = Layout::horizontal([
         Constraint::Min(0),
-        Constraint::Length(indicator.as_ref().map_or(0, |s| s.width() as u16)),
+        Constraint::Length(indicator.width() as u16),
     ])
     .areas(area);
-    if let Some(indicator) = indicator {
-        frame.render_widget(Paragraph::new(Line::from(indicator)), indicator_area);
-    }
+    frame.render_widget(Paragraph::new(indicator), indicator_area);
 
     if let Some(message) = &app.message {
         let color = if message.is_error {

@@ -1,4 +1,4 @@
-use crate::Config;
+use crate::config::Account;
 use crate::domain::models::Logs;
 use crate::domain::models::{RateLimit, Repository, Run, Workflow, WorkflowInput};
 use crate::domain::repositories::WorkflowRepository;
@@ -14,18 +14,18 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct HttpWorkflowRepository {
-    cfg: Config,
+    account: Account,
     client: Client,
     /// From the headers of the most recent response.
     rate_limit: Mutex<Option<RateLimit>>,
 }
 
 impl HttpWorkflowRepository {
-    pub fn new(cfg: Config) -> Self {
+    pub fn new(account: Account) -> Self {
         Self {
-            cfg,
+            account,
             client: Client::new(),
             rate_limit: Mutex::new(None),
         }
@@ -46,7 +46,7 @@ impl HttpWorkflowRepository {
         self.client
             .post(url)
             .header(USER_AGENT, "actiontui")
-            .header(AUTHORIZATION, format!("Bearer {}", self.cfg.pat))
+            .header(AUTHORIZATION, format!("Bearer {}", self.account.token))
             .header(ACCEPT, "application/vnd.github+json")
     }
 
@@ -66,7 +66,7 @@ impl HttpWorkflowRepository {
         self.client
             .get(url)
             .header(USER_AGENT, "actiontui")
-            .header(AUTHORIZATION, format!("Bearer {}", self.cfg.pat))
+            .header(AUTHORIZATION, format!("Bearer {}", self.account.token))
             .header(ACCEPT, "application/vnd.github+json")
     }
 }
@@ -134,8 +134,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
 
     fn get_workflows(&self, repo: &Repository) -> Result<Vec<Workflow>> {
         let url = format!(
-            "https://api.{}/repos/{}/{}/actions/workflows",
-            self.cfg.url, repo.owner, repo.repo
+            "{}/repos/{}/{}/actions/workflows",
+            self.account.api_base, repo.owner, repo.repo
         );
 
         let response: GithubWorkflowResponse = self.send(self.get_request(url))?.json()?;
@@ -154,8 +154,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
 
     fn get_runs(&self, repo: &Repository, workflow_id: u64) -> Result<Vec<Run>> {
         let url = format!(
-            "https://api.{}/repos/{}/{}/actions/workflows/{}/runs",
-            self.cfg.url, repo.owner, repo.repo, workflow_id
+            "{}/repos/{}/{}/actions/workflows/{}/runs",
+            self.account.api_base, repo.owner, repo.repo, workflow_id
         );
 
         let response: GithubRunResponse = self.send(self.get_request(url))?.json()?;
@@ -179,8 +179,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
 
     fn get_jobs(&self, repo: &Repository, run_id: u64) -> Result<Vec<Job>> {
         let url = format!(
-            "https://api.{}/repos/{}/{}/actions/runs/{}/jobs",
-            self.cfg.url, repo.owner, repo.repo, run_id
+            "{}/repos/{}/{}/actions/runs/{}/jobs",
+            self.account.api_base, repo.owner, repo.repo, run_id
         );
 
         let response: GithubJobResponse = self.send(self.get_request(url))?.json()?;
@@ -213,8 +213,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
 
     fn get_job_by_id(&self, repo: &Repository, job_id: u64) -> Result<Job> {
         let url = format!(
-            "https://api.{}/repos/{}/{}/actions/jobs/{}",
-            self.cfg.url, repo.owner, repo.repo, job_id
+            "{}/repos/{}/{}/actions/jobs/{}",
+            self.account.api_base, repo.owner, repo.repo, job_id
         );
 
         let response: GithubWorkflowRunJob = self.send(self.get_request(url))?.json()?;
@@ -242,8 +242,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
 
     fn get_logs(&self, repo: &Repository, job_id: u64) -> Result<Logs> {
         let url = format!(
-            "https://api.{}/repos/{}/{}/actions/jobs/{}/logs",
-            self.cfg.url, repo.owner, repo.repo, job_id
+            "{}/repos/{}/{}/actions/jobs/{}/logs",
+            self.account.api_base, repo.owner, repo.repo, job_id
         );
         let response = self.send(self.get_request(url))?.error_for_status()?;
         // streamed to disk, the log is never held in memory
@@ -257,8 +257,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
         reference: &str,
     ) -> Result<Vec<WorkflowInput>> {
         let url = format!(
-            "https://api.{}/repos/{}/{}/contents/{}",
-            self.cfg.url,
+            "{}/repos/{}/{}/contents/{}",
+            self.account.api_base,
             repo.owner,
             repo.repo,
             workflow.path.trim_start_matches('/')
@@ -276,8 +276,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
     fn rerun_run(&self, repo: &Repository, run_id: u64) -> Result<()> {
         self.post_empty(
             format!(
-                "https://api.{}/repos/{}/{}/actions/runs/{}/rerun",
-                self.cfg.url, repo.owner, repo.repo, run_id
+                "{}/repos/{}/{}/actions/runs/{}/rerun",
+                self.account.api_base, repo.owner, repo.repo, run_id
             ),
             "rerun the run",
         )
@@ -286,8 +286,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
     fn rerun_job(&self, repo: &Repository, job_id: u64) -> Result<()> {
         self.post_empty(
             format!(
-                "https://api.{}/repos/{}/{}/actions/jobs/{}/rerun",
-                self.cfg.url, repo.owner, repo.repo, job_id
+                "{}/repos/{}/{}/actions/jobs/{}/rerun",
+                self.account.api_base, repo.owner, repo.repo, job_id
             ),
             "rerun the job",
         )
@@ -296,8 +296,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
     fn rerun_failed_jobs(&self, repo: &Repository, run_id: u64) -> Result<()> {
         self.post_empty(
             format!(
-                "https://api.{}/repos/{}/{}/actions/runs/{}/rerun-failed-jobs",
-                self.cfg.url, repo.owner, repo.repo, run_id
+                "{}/repos/{}/{}/actions/runs/{}/rerun-failed-jobs",
+                self.account.api_base, repo.owner, repo.repo, run_id
             ),
             "rerun failed jobs",
         )
@@ -311,8 +311,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
         inputs: &HashMap<String, String>,
     ) -> Result<()> {
         let url = format!(
-            "https://api.{}/repos/{}/{}/actions/workflows/{}/dispatches",
-            self.cfg.url, repo.owner, repo.repo, workflow_id
+            "{}/repos/{}/{}/actions/workflows/{}/dispatches",
+            self.account.api_base, repo.owner, repo.repo, workflow_id
         );
 
         let mut body = serde_json::json!({
