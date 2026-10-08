@@ -52,6 +52,11 @@ impl Logs {
         Ok(Self { file, byte_len })
     }
 
+    /// A job without any log, e.g. one that has not run.
+    pub fn empty() -> io::Result<Self> {
+        Self::from_reader(io::empty())
+    }
+
     #[cfg(test)]
     pub fn from_bytes(bytes: &[u8]) -> io::Result<Self> {
         Self::from_reader(bytes)
@@ -121,6 +126,14 @@ mod tests {
         let logs = logs("one\ntwo\n");
         assert_eq!(logs.lines_in(LogRange::new(4, 100)).unwrap(), vec!["two"]);
         assert!(logs.lines_in(LogRange::new(100, 5)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn empty_logs_have_no_lines() {
+        let logs = Logs::empty().unwrap();
+        assert_eq!(logs.byte_len(), 0);
+        assert!(logs.lines_in(LogRange::new(0, 10)).unwrap().is_empty());
+        assert_eq!(logs.raw_lines().unwrap().count(), 0);
     }
 
     #[test]

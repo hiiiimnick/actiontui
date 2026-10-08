@@ -22,13 +22,22 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .map(|s| format!("Logs - {}", s.name))
         .unwrap_or_else(|| "Logs".to_string());
 
-    let lines: Vec<Line> = app
+    let placeholder = app.selected_step.is_some() && app.log_lines.is_empty();
+    let mut lines: Vec<Line> = app
         .log_lines
         .iter()
         .skip(app.logs_offset as usize)
         .take(height)
         .map(|l| style_line(l))
         .collect();
+
+    let shown = lines.len();
+    if placeholder {
+        lines.push(Line::styled(
+            "No log output for this step (the job has not run yet, was skipped, or its logs expired)",
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
 
     let block = Block::default()
         .borders(Borders::all())
@@ -37,7 +46,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
         .title(
             Line::from(format!(
                 "{}/{}",
-                app.logs_offset as usize + lines.len(),
+                app.logs_offset as usize + shown,
                 app.log_lines.len()
             ))
             .right_aligned(),

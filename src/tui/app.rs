@@ -144,10 +144,22 @@ impl App {
         loop {
             terminal.draw(|f| ui::ui(self, f))?;
 
-            if let Event::Key(key) = event::read()?
-                && self.handle_key_input(key)?
-            {
-                return Ok(true);
+            if let Event::Key(key) = event::read()? {
+                match self.handle_key_input(key) {
+                    Ok(true) => return Ok(true),
+                    Ok(false) => {}
+                    // a failed request must not end the session, show it instead
+                    Err(error) => {
+                        self.message = Some(StatusMessage {
+                            text: error
+                                .to_string()
+                                .split_whitespace()
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                            is_error: true,
+                        });
+                    }
+                }
             }
         }
     }
@@ -494,12 +506,16 @@ impl App {
                         if let Some(index) = self.job_state.selected()
                             && let Some(job) = self.jobs.get(index)
                         {
-                            self.selected_job = Some(job.clone());
-                            self.current_focus = CurrentFocus::Steps;
-                            self.job_state = ListState::default();
+                            // load first, so a failure leaves the view as it was
                             let logs = self.workflowrepo.get_logs(&self.repo, job.id)?;
                             self.log_index = StepLogLocator::locate(&logs, &job.steps)?;
                             self.logs = Some(logs);
+                            self.selected_job = Some(job.clone());
+                            self.current_focus = CurrentFocus::Steps;
+                            self.job_state = ListState::default();
+                            self.step_state = ListState::default();
+                            self.selected_step = None;
+                            self.log_lines.clear();
                         }
                     }
                     _ => {}

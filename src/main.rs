@@ -48,20 +48,28 @@ fn main() -> Result<()> {
 
     let mut app = App::new(account, repo)?;
 
+    // a panic or an error must not leave the terminal in raw mode
+    let panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = restore_terminal();
+        panic_hook(info);
+    }));
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    app.run(&mut terminal)?;
+    let result = app.run(&mut terminal);
 
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    restore_terminal()?;
     terminal.show_cursor()?;
+    result?;
 
     Ok(())
+}
+
+fn restore_terminal() -> io::Result<()> {
+    disable_raw_mode()?;
+    execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)
 }

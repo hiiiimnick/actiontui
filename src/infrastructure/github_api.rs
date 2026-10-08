@@ -33,14 +33,21 @@ impl HttpWorkflowRepository {
     }
 
     /// Sends the request and remembers the API quota reported in the response.
-    /// An unsuccessful status becomes an error carrying GitHub's message.
-    fn send(&self, request: RequestBuilder) -> Result<Response> {
+    /// The status is not checked.
+    fn send_unchecked(&self, request: RequestBuilder) -> Result<Response> {
         let response = request.send()?;
         if let Some(rate_limit) = parse_rate_limit(response.headers())
             && let Some(mut current) = self.rate_limit.lock().ok()
         {
             *current = Some(rate_limit);
         }
+        Ok(response)
+    }
+
+    /// Like `send_unchecked`, but an unsuccessful status becomes an error
+    /// carrying GitHub's message.
+    fn send(&self, request: RequestBuilder) -> Result<Response> {
+        let response = self.send_unchecked(request)?;
         if response.status().is_success() {
             return Ok(response);
         }
@@ -251,7 +258,21 @@ impl WorkflowRepository for HttpWorkflowRepository {
             "{}/repos/{}/{}/actions/jobs/{}/logs",
             self.account.api_base, repo.owner, repo.repo, job_id
         );
-        let response = self.send(self.get_request(url))?;
+        let response = self.send_unchecked(self.get_request(url))?;
+        // jobs that have not run (waiting for approval, skipped) or whose logs
+        // expired have none: the download then answers 404
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(Logs::empty()?);
+        }
+        if !response.status().is_success() {
+            let status = response.status();
+            let path = response.url().path().to_string();
+            let body = response.text().unwrap_or_default();
+            return Err(color_eyre::eyre::eyre!(
+                "{}",
+                describe_api_error(status, &path, &body, &self.account.profile)
+            ));
+        }
         // streamed to disk, the log is never held in memory
         Ok(Logs::from_reader(response)?)
     }
@@ -325,13 +346,17 @@ impl WorkflowRepository for HttpWorkflowRepository {
     }
 }
 
+fn one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// A message for an unsuccessful response: the status, GitHub's own message and,
 /// for the usual causes, a hint on how to fix it.
 fn describe_api_error(status: StatusCode, path: &str, body: &str, profile: &str) -> String {
     let message = serde_json::from_str::<serde_json::Value>(body)
         .ok()
         .and_then(|json| json["message"].as_str().map(str::to_string))
-        .unwrap_or_else(|| body.trim().chars().take(200).collect());
+        .unwrap_or_else(|| one_line(body).chars().take(200).collect());
     let hint = match status.as_u16() {
         401 => format!(" (the token of profile '{profile}' is invalid or expired)"),
         403 => format!(
@@ -394,6 +419,17 @@ mod tests {
     fn api_errors_without_json_use_the_body() {
         let text = describe_api_error(StatusCode::BAD_GATEWAY, "/x", "  upstream down \n", "p");
         assert!(text.ends_with(": upstream down"), "{text}");
+    }
+
+    #[test]
+    fn multiline_bodies_become_one_line() {
+        let body = "<?xml version=\"1.0\"?>\n<Error>\n  <Code>BlobNotFound</Code>\n</Error>";
+        let text = describe_api_error(StatusCode::BAD_GATEWAY, "/x", body, "p");
+        assert!(!text.contains('\n'), "{text}");
+        assert!(
+            text.contains("<Error> <Code>BlobNotFound</Code> </Error>"),
+            "{text}"
+        );
     }
 
     #[test]
