@@ -8,7 +8,7 @@ pub struct Job {
     pub name: String,
     pub status: String,
     pub conclusion: Option<String>,
-    pub started_at: DateTime<Local>,
-    pub completed_at: DateTime<Local>,
+    pub started_at: Option<DateTime<Local>>,
+    pub completed_at: Option<DateTime<Local>>,
     pub steps: Vec<Step>,
 }

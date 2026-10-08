@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 
 use color_eyre::eyre::Error;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
@@ -54,6 +55,7 @@ pub struct App {
     pub selected_step: Option<Step>,
 
     pub selected_logs: (u64, u64),
+    pub log_lines: Vec<String>,
     pub logs_offset: u64,
 }
 
@@ -85,6 +87,7 @@ impl App {
             step_state: ListState::default(),
             selected_step: None,
             selected_logs: (0, 0),
+            log_lines: Vec::new(),
             logs_offset: 0,
         })
     }
@@ -233,38 +236,51 @@ impl App {
                         {
                             self.selected_step = Some(step.clone());
                             self.current_focus = CurrentFocus::Logs;
-                            self.selected_logs = *self.log_index.get(&step.name).expect("test");
+                            self.selected_logs =
+                                self.log_index.get(&step.name).copied().unwrap_or((0, 0));
                             self.logs_offset = 0;
+                            self.load_step_logs()?;
                         }
                     }
                     _ => {}
                 }
             }
-            CurrentFocus::Logs => match key.code {
-                KeyCode::Char('j') => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) {
-                        self.logs_offset += 10;
-                    } else {
-                        self.logs_offset += 1;
+            CurrentFocus::Logs => {
+                let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                let step = if ctrl { 10 } else { 1 };
+                match key.code {
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        self.logs_offset = self.logs_offset.saturating_add(step);
                     }
-                }
-                KeyCode::Char('k') => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) {
-                        self.logs_offset -= 10;
-                    } else {
-                        self.logs_offset -= 1;
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        self.logs_offset = self.logs_offset.saturating_sub(step);
                     }
+                    // clamped to the last page while rendering
+                    KeyCode::Char('G') | KeyCode::Char('J') | KeyCode::End => {
+                        self.logs_offset = u64::MAX
+                    }
+                    KeyCode::Char('g') | KeyCode::Char('K') | KeyCode::Home => self.logs_offset = 0,
+                    _ => {}
                 }
-                KeyCode::Char('J') => {
-                    self.logs_offset = self.selected_logs.1;
-                }
-                KeyCode::Char('K') => {
-                    self.logs_offset = 0;
-                }
-                _ => {}
-            },
+            }
         }
         Ok(false)
+    }
+
+    fn load_step_logs(&mut self) -> Result<(), Error> {
+        self.log_lines.clear();
+        let (start, len) = self.selected_logs;
+        if let Some(file) = self.logs.as_mut() {
+            let mut buf = vec![0; len as usize];
+            file.seek(SeekFrom::Start(start))?;
+            let read = file.read(&mut buf)?;
+            buf.truncate(read);
+            self.log_lines = String::from_utf8_lossy(&buf)
+                .lines()
+                .map(str::to_owned)
+                .collect();
+        }
+        Ok(())
     }
 
     fn set_default_states(&mut self) {

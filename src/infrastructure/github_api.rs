@@ -70,16 +70,16 @@ struct GithubWorkflowRunJobStep {
     status: String,
     conclusion: Option<String>,
     number: u64,
-    started_at: String,
-    completed_at: String,
+    started_at: Option<String>,
+    completed_at: Option<String>,
 }
 #[derive(Deserialize)]
 struct GithubWorkflowRunJob {
     id: u64,
     status: String,
     conclusion: Option<String>,
-    started_at: DateTime<Utc>,
-    completed_at: DateTime<Utc>,
+    started_at: Option<DateTime<Utc>>,
+    completed_at: Option<DateTime<Utc>>,
     name: String,
     steps: Vec<GithubWorkflowRunJobStep>,
 }
@@ -150,8 +150,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
                 name: job.name,
                 status: job.status,
                 conclusion: job.conclusion,
-                started_at: DateTime::from(job.started_at),
-                completed_at: DateTime::from(job.completed_at),
+                started_at: job.started_at.map(DateTime::from),
+                completed_at: job.completed_at.map(DateTime::from),
                 steps: job
                     .steps
                     .into_iter()
@@ -160,8 +160,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
                         status: step.status,
                         conclusion: step.conclusion,
                         number: step.number,
-                        started_at: step.started_at,
-                        completed_at: step.completed_at,
+                        started_at: step.started_at.unwrap_or_default(),
+                        completed_at: step.completed_at.unwrap_or_default(),
                     })
                     .collect(),
             })
@@ -180,8 +180,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
             name: response.name,
             status: response.status,
             conclusion: response.conclusion,
-            started_at: DateTime::from(response.started_at),
-            completed_at: DateTime::from(response.completed_at),
+            started_at: response.started_at.map(DateTime::from),
+            completed_at: response.completed_at.map(DateTime::from),
             steps: response
                 .steps
                 .into_iter()
@@ -190,8 +190,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
                     status: step.status,
                     conclusion: step.conclusion,
                     number: step.number,
-                    started_at: step.started_at,
-                    completed_at: step.completed_at,
+                    started_at: step.started_at.unwrap_or_default(),
+                    completed_at: step.completed_at.unwrap_or_default(),
                 })
                 .collect(),
         })

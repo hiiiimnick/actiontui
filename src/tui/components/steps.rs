@@ -35,9 +35,9 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
                     String::new()
                 };
 
-                let filler = " ".repeat(
-                    area.width as usize - 2 - status_span.width() - name.len() - duration.len(),
-                );
+                let filler = " ".repeat((area.width as usize).saturating_sub(
+                    2 + status_span.width() + Span::raw(name.as_str()).width() + duration.len(),
+                ));
                 return ListItem::new(Line::from(vec![
                     status_span,
                     Span::raw(name),
