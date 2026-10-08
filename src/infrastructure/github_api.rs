@@ -1,15 +1,17 @@
 use crate::Config;
-use crate::domain::models::logs::Logs;
-use crate::domain::models::{Repository, Run, Workflow};
+use crate::domain::models::Logs;
+use crate::domain::models::{Repository, Run, Workflow, WorkflowInput};
 use crate::domain::repositories::WorkflowRepository;
 use crate::domain::{Job, Step};
 use crate::infrastructure::map_optional_time;
+use crate::infrastructure::workflow_definition::parse_dispatch_inputs;
 use chrono::{DateTime, Utc};
 use color_eyre::Result;
 use color_eyre::eyre::Ok;
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Default, Debug)]
 pub struct HttpWorkflowRepository {
@@ -43,6 +45,7 @@ struct GithubWorkflowResponse {
 struct GithubWorkflow {
     id: u64,
     name: String,
+    path: String,
     state: String,
 }
 
@@ -70,8 +73,8 @@ struct GithubWorkflowRunJobStep {
     status: String,
     conclusion: Option<String>,
     number: u64,
-    started_at: Option<String>,
-    completed_at: Option<String>,
+    started_at: Option<DateTime<Utc>>,
+    completed_at: Option<DateTime<Utc>>,
 }
 #[derive(Deserialize)]
 struct GithubWorkflowRunJob {
@@ -104,6 +107,7 @@ impl WorkflowRepository for HttpWorkflowRepository {
             .map(|w| Workflow {
                 id: w.id,
                 name: w.name,
+                path: w.path,
                 state: w.state,
             })
             .collect())
@@ -160,8 +164,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
                         status: step.status,
                         conclusion: step.conclusion,
                         number: step.number,
-                        started_at: step.started_at.unwrap_or_default(),
-                        completed_at: step.completed_at.unwrap_or_default(),
+                        started_at: step.started_at,
+                        completed_at: step.completed_at,
                     })
                     .collect(),
             })
@@ -190,8 +194,8 @@ impl WorkflowRepository for HttpWorkflowRepository {
                     status: step.status,
                     conclusion: step.conclusion,
                     number: step.number,
-                    started_at: step.started_at.unwrap_or_default(),
-                    completed_at: step.completed_at.unwrap_or_default(),
+                    started_at: step.started_at,
+                    completed_at: step.completed_at,
                 })
                 .collect(),
         })
@@ -202,24 +206,54 @@ impl WorkflowRepository for HttpWorkflowRepository {
             "https://api.{}/repos/{}/{}/actions/jobs/{}/logs",
             self.cfg.url, repo.owner, repo.repo, job_id
         );
-        let result = self.get_request(url).send().unwrap();
-        let mut logs = Logs {
-            text: result.text().unwrap().into_bytes(),
-            length: 0,
-        };
-        logs.length = logs.text.len();
-        Ok(logs)
+        let response = self.get_request(url).send()?.error_for_status()?;
+        // streamed to disk, the log is never held in memory
+        Ok(Logs::from_reader(response)?)
     }
 
-    fn trigger_workflow(&self, repo: &Repository, workflow_id: u64, reference: &str) -> Result<()> {
+    fn get_workflow_inputs(
+        &self,
+        repo: &Repository,
+        workflow: &Workflow,
+        reference: &str,
+    ) -> Result<Vec<WorkflowInput>> {
+        let url = format!(
+            "https://api.{}/repos/{}/{}/contents/{}",
+            self.cfg.url,
+            repo.owner,
+            repo.repo,
+            workflow.path.trim_start_matches('/')
+        );
+
+        // the raw media type returns the file itself instead of base64 JSON
+        let yaml = self
+            .get_request(url)
+            .query(&[("ref", reference)])
+            .header(ACCEPT, "application/vnd.github.raw+json")
+            .send()?
+            .error_for_status()?
+            .text()?;
+        parse_dispatch_inputs(&yaml)
+    }
+
+    fn trigger_workflow(
+        &self,
+        repo: &Repository,
+        workflow_id: u64,
+        reference: &str,
+        inputs: &HashMap<String, String>,
+    ) -> Result<()> {
         let url = format!(
             "https://api.{}/repos/{}/{}/actions/workflows/{}/dispatches",
             self.cfg.url, repo.owner, repo.repo, workflow_id
         );
 
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "ref": reference
         });
+        if !inputs.is_empty() {
+            body["inputs"] = serde_json::json!(inputs);
+        }
 
         let res = self
             .client

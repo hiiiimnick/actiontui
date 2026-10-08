@@ -9,11 +9,11 @@ use ratatui::{
 
 use crate::tui::{
     app::{App, CurrentFocus},
-    util::{map_block_color, map_delta_time_to_duration, map_status_to_span},
+    util::{format_duration, map_block_color, map_status_to_span},
 };
 
 pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
-    let local_time = Utc::now().to_rfc3339();
+    let now = Utc::now();
     let list_items: Vec<ListItem> = if let Some(selected) = &app.selected_job {
         selected
             .steps
@@ -22,18 +22,7 @@ pub fn render(app: &mut App, frame: &mut Frame, area: Rect) {
                 let name = step.name.clone();
                 let status_span = map_status_to_span(&step.status, step.conclusion.as_deref());
 
-                let duration = if step.started_at != "" {
-                    if step.completed_at != "" {
-                        map_delta_time_to_duration(
-                            step.started_at.as_str(),
-                            step.completed_at.as_str(),
-                        )
-                    } else {
-                        map_delta_time_to_duration(step.started_at.as_str(), &local_time)
-                    }
-                } else {
-                    String::new()
-                };
+                let duration = step.duration(now).map(format_duration).unwrap_or_default();
 
                 let filler = " ".repeat((area.width as usize).saturating_sub(
                     2 + status_span.width() + Span::raw(name.as_str()).width() + duration.len(),

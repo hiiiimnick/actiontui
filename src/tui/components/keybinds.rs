@@ -9,9 +9,30 @@ use ratatui::{
 use crate::tui::app::{App, CurrentFocus};
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
+    if let Some(message) = &app.message {
+        let color = if message.is_error {
+            Color::Red
+        } else {
+            Color::Green
+        };
+        let line = Line::styled(format!(" {}", message.text), Style::default().fg(color));
+        frame.render_widget(Paragraph::new(line), area);
+        return;
+    }
+
     let context: &[(&str, &str)] = match app.current_focus {
-        CurrentFocus::Workflows => &[("j/k", "move"), ("Enter", "runs"), ("r", "refresh")],
-        CurrentFocus::Runs => &[("j/k", "move"), ("Enter", "jobs"), ("r", "refresh")],
+        CurrentFocus::Workflows => &[
+            ("j/k", "move"),
+            ("Enter", "runs"),
+            ("n", "new run"),
+            ("r", "refresh"),
+        ],
+        CurrentFocus::Runs => &[
+            ("j/k", "move"),
+            ("Enter", "jobs"),
+            ("n", "new run"),
+            ("r", "refresh"),
+        ],
         CurrentFocus::Jobs => &[("j/k", "move"), ("Enter", "steps"), ("r", "refresh")],
         CurrentFocus::Steps => &[("j/k", "move"), ("Enter", "logs"), ("r", "refresh")],
         CurrentFocus::Logs => &[

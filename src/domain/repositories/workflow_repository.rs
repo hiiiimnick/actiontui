@@ -1,6 +1,6 @@
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
-use crate::domain::models::{Job, Logs, Repository, Run, Workflow};
+use crate::domain::models::{Job, Logs, Repository, Run, Workflow, WorkflowInput};
 use color_eyre::Result;
 
 pub trait WorkflowRepository: Debug {
@@ -9,5 +9,18 @@ pub trait WorkflowRepository: Debug {
     fn get_jobs(&self, repo: &Repository, run_id: u64) -> Result<Vec<Job>>;
     fn get_logs(&self, repo: &Repository, job_id: u64) -> Result<Logs>;
     fn get_job_by_id(&self, repo: &Repository, job_id: u64) -> Result<Job>;
-    fn trigger_workflow(&self, repo: &Repository, workflow_id: u64, reference: &str) -> Result<()>;
+    /// The inputs `workflow` asks for when started manually on `reference`.
+    fn get_workflow_inputs(
+        &self,
+        repo: &Repository,
+        workflow: &Workflow,
+        reference: &str,
+    ) -> Result<Vec<WorkflowInput>>;
+    fn trigger_workflow(
+        &self,
+        repo: &Repository,
+        workflow_id: u64,
+        reference: &str,
+        inputs: &HashMap<String, String>,
+    ) -> Result<()>;
 }

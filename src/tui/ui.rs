@@ -5,7 +5,7 @@ use ratatui::{
 
 use crate::tui::{
     app::App,
-    components::{joblist, keybinds, logs, runlist, steps, workflowlist},
+    components::{joblist, keybinds, logs, popup, runlist, steps, workflowlist},
 };
 
 pub fn ui(app: &mut App, frame: &mut Frame) {
@@ -28,4 +28,5 @@ pub fn ui(app: &mut App, frame: &mut Frame) {
     steps::render(app, frame, horizontal_split[1]);
     logs::render(app, frame, main_rects[3]);
     keybinds::render(app, frame, main_rects[4]);
+    popup::render(app, frame);
 }

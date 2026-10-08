@@ -24,6 +24,22 @@ pat = "ghp_yourtokenhere"
 - `pat`: a personal access token with access to Actions (`repo` scope for classic tokens, *Actions: read* for fine-grained ones).
 - `url`: the GitHub host. Change it for GitHub Enterprise.
 
+### Starting a run
+
+`n` opens a form with the branch and every input the workflow declares under
+`on.workflow_dispatch.inputs` (read from the workflow file on that branch):
+
+| Input type | Field | Keys |
+| --- | --- | --- |
+| `string`, `number` | text | `i` edit, `Esc`/`Enter` done, `D` clear |
+| `boolean` | `[x]` | `Space`/`x`/`h`/`l` toggle |
+| `choice` | `< value >` | `h`/`l` previous / next |
+
+`j`/`k` move between fields, `Enter` starts the run, `Esc`/`q` cancels. Changing
+the branch reloads the inputs for that branch. Fields marked `*` are required.
+
+Starting a run needs `workflow_dispatch` in the workflow's `on:` triggers and a token with *Actions: write*.
+
 ## Keys
 
 | Key | Action |
@@ -34,6 +50,7 @@ pat = "ghp_yourtokenhere"
 | `Ctrl`+`j` `k` | Scroll logs by 10 lines |
 | `g` / `G` | Jump to top / bottom of the logs |
 | `Enter` | Open the selected item (workflow → runs → jobs → steps → logs) |
+| `n` | Start a new run of the selected workflow (opens the run form) |
 | `r` | Refresh the current list |
 | `q` / `Ctrl`+`c` | Quit |
 

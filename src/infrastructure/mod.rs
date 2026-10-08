@@ -1,4 +1,5 @@
 pub mod github_api;
+mod workflow_definition;
 
 use chrono::{DateTime, Local, Utc};
 pub use github_api::HttpWorkflowRepository;

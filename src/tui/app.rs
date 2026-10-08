@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
-
 use color_eyre::eyre::Error;
+use std::collections::HashMap;
+
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
@@ -10,14 +8,25 @@ use ratatui::widgets::{List, ListState};
 use tui_widget_list;
 
 use crate::Config;
-use crate::domain::{Job, Repository, Run, Step, Workflow, WorkflowRepository};
+use crate::domain::{
+    Job, Logs, Repository, Run, Step, StepLogIndex, StepLogLocator, Workflow, WorkflowInput,
+    WorkflowRepository,
+};
 use crate::infrastructure::HttpWorkflowRepository;
+use crate::tui::run_form::{FormAction, RunForm};
 use crate::tui::ui;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Mode {
     Navigation,
     Input,
+}
+
+/// Feedback for the user, shown in the bottom line until the next key press.
+#[derive(Debug)]
+pub struct StatusMessage {
+    pub text: String,
+    pub is_error: bool,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -34,6 +43,8 @@ pub struct App {
     pub repo: Repository,
     pub current_focus: CurrentFocus,
     pub mode: Mode,
+    pub run_form: Option<RunForm>,
+    pub message: Option<StatusMessage>,
     pub workflowrepo: Box<dyn WorkflowRepository>,
 
     pub workflows: Vec<Workflow>,
@@ -48,13 +59,12 @@ pub struct App {
     pub job_state: ListState,
 
     pub selected_job: Option<Job>,
-    pub logs: Option<File>,
-    pub log_index: HashMap<String, (u64, u64)>,
+    pub logs: Option<Logs>,
+    pub log_index: StepLogIndex,
 
     pub step_state: ListState,
     pub selected_step: Option<Step>,
 
-    pub selected_logs: (u64, u64),
     pub log_lines: Vec<String>,
     pub logs_offset: u64,
 }
@@ -75,6 +85,8 @@ impl App {
             workflow_state,
             current_focus: CurrentFocus::Workflows,
             mode: Mode::Navigation,
+            run_form: None,
+            message: None,
             selected_workflow_id: None,
             run_state: ListState::default(),
             runs: Vec::new(),
@@ -83,10 +95,9 @@ impl App {
             selected_job: None,
             job_state: ListState::default(),
             logs: None,
-            log_index: HashMap::default(),
+            log_index: StepLogIndex::default(),
             step_state: ListState::default(),
             selected_step: None,
-            selected_logs: (0, 0),
             log_lines: Vec::new(),
             logs_offset: 0,
         })
@@ -110,11 +121,100 @@ impl App {
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             return Ok(true);
         }
+        self.message = None;
         match self.mode {
-            Mode::Input => {}
+            Mode::Input => self.handle_key_input_form(key),
             Mode::Navigation => return self.handle_key_input_navigation(key),
         }
         Ok(false)
+    }
+
+    /// Opens the form to start a new run of `workflow_id`, with the inputs
+    /// the workflow declares on the current branch.
+    fn open_run_form(&mut self, workflow_id: u64) {
+        let Some(workflow) = self.workflows.iter().find(|w| w.id == workflow_id) else {
+            return;
+        };
+        let branch = Repository::current_branch().unwrap_or_else(|_| "main".into());
+        let (inputs, notice) = self.load_inputs(workflow, &branch);
+        self.run_form = Some(RunForm::new(
+            workflow.id,
+            workflow.name.clone(),
+            branch,
+            inputs,
+            notice,
+        ));
+        self.mode = Mode::Input;
+    }
+
+    /// The inputs of `workflow` on `branch`. If they cannot be read the run
+    /// can still be started without inputs, so the error is only a notice.
+    fn load_inputs(
+        &self,
+        workflow: &Workflow,
+        branch: &str,
+    ) -> (Vec<WorkflowInput>, Option<String>) {
+        match self
+            .workflowrepo
+            .get_workflow_inputs(&self.repo, workflow, branch)
+        {
+            Ok(inputs) => (inputs, None),
+            Err(e) => (Vec::new(), Some(format!("Could not read inputs: {e}"))),
+        }
+    }
+
+    fn handle_key_input_form(&mut self, key: KeyEvent) {
+        let Some(form) = self.run_form.as_mut() else {
+            self.mode = Mode::Navigation;
+            return;
+        };
+        match form.handle_key(key) {
+            FormAction::None => {}
+            FormAction::Cancel => {
+                self.run_form = None;
+                self.mode = Mode::Navigation;
+            }
+            FormAction::Submit => {
+                let (branch, inputs) = form.values();
+                let workflow_id = form.workflow_id;
+                self.run_form = None;
+                self.mode = Mode::Navigation;
+                self.trigger_run(workflow_id, &branch, &inputs);
+            }
+            FormAction::BranchChanged => {
+                let branch = form.branch().to_string();
+                let workflow = self.workflows.iter().find(|w| w.id == form.workflow_id);
+                if let Some(workflow) = workflow {
+                    let (inputs, notice) = self.load_inputs(workflow, &branch);
+                    if let Some(form) = self.run_form.as_mut() {
+                        form.set_inputs(inputs, notice);
+                    }
+                }
+            }
+        }
+    }
+
+    fn trigger_run(&mut self, workflow_id: u64, branch: &str, inputs: &HashMap<String, String>) {
+        let name = self
+            .workflows
+            .iter()
+            .find(|w| w.id == workflow_id)
+            .map_or("workflow", |w| w.name.as_str());
+        self.message = Some(
+            match self
+                .workflowrepo
+                .trigger_workflow(&self.repo, workflow_id, branch, inputs)
+            {
+                Ok(()) => StatusMessage {
+                    text: format!("Started '{name}' on {branch}, refresh runs with r"),
+                    is_error: false,
+                },
+                Err(e) => StatusMessage {
+                    text: format!("Could not start '{name}': {e}"),
+                    is_error: true,
+                },
+            },
+        );
     }
 
     fn handle_key_input_navigation(&mut self, key: KeyEvent) -> Result<bool, Error> {
@@ -162,6 +262,13 @@ impl App {
                 KeyCode::Char('r') => {
                     self.workflows = self.workflowrepo.get_workflows(&self.repo)?;
                 }
+                KeyCode::Char('n') => {
+                    if let Some(index) = self.workflow_state.selected
+                        && let Some(workflow) = self.workflows.get(index)
+                    {
+                        self.open_run_form(workflow.id);
+                    }
+                }
                 KeyCode::Enter => {
                     if let Some(index) = self.workflow_state.selected
                         && let Some(workflow) = self.workflows.get(index)
@@ -180,6 +287,11 @@ impl App {
                     KeyCode::Char('r') => {
                         if let Some(workflow_id) = &self.selected_workflow_id {
                             self.runs = self.workflowrepo.get_runs(&self.repo, *workflow_id)?;
+                        }
+                    }
+                    KeyCode::Char('n') => {
+                        if let Some(workflow_id) = self.selected_workflow_id {
+                            self.open_run_form(workflow_id);
                         }
                     }
                     KeyCode::Enter => {
@@ -210,9 +322,9 @@ impl App {
                             self.selected_job = Some(job.clone());
                             self.current_focus = CurrentFocus::Steps;
                             self.job_state = ListState::default();
-                            let logs = self.workflowrepo.get_logs(&self.repo, job.id).unwrap();
-                            self.logs = Some(logs.save_to_file().unwrap());
-                            self.log_index = logs.create_step_index(&job.steps).unwrap();
+                            let logs = self.workflowrepo.get_logs(&self.repo, job.id)?;
+                            self.log_index = StepLogLocator::locate(&logs, &job.steps)?;
+                            self.logs = Some(logs);
                         }
                     }
                     _ => {}
@@ -236,8 +348,6 @@ impl App {
                         {
                             self.selected_step = Some(step.clone());
                             self.current_focus = CurrentFocus::Logs;
-                            self.selected_logs =
-                                self.log_index.get(&step.name).copied().unwrap_or((0, 0));
                             self.logs_offset = 0;
                             self.load_step_logs()?;
                         }
@@ -268,18 +378,10 @@ impl App {
     }
 
     fn load_step_logs(&mut self) -> Result<(), Error> {
-        self.log_lines.clear();
-        let (start, len) = self.selected_logs;
-        if let Some(file) = self.logs.as_mut() {
-            let mut buf = vec![0; len as usize];
-            file.seek(SeekFrom::Start(start))?;
-            let read = file.read(&mut buf)?;
-            buf.truncate(read);
-            self.log_lines = String::from_utf8_lossy(&buf)
-                .lines()
-                .map(str::to_owned)
-                .collect();
-        }
+        self.log_lines = match (&self.logs, &self.selected_step) {
+            (Some(logs), Some(step)) => logs.lines_in(self.log_index.range_of(step))?,
+            _ => Vec::new(),
+        };
         Ok(())
     }
 

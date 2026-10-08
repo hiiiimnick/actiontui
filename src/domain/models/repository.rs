@@ -35,6 +35,18 @@ impl Repository {
         Self::parse_url(&url)
     }
 
+    /// The branch currently checked out, if HEAD is on a branch.
+    pub fn current_branch() -> Result<String> {
+        let output = Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .output()?;
+        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !output.status.success() || branch.is_empty() || branch == "HEAD" {
+            return Err(eyre!("Not on a branch"));
+        }
+        Ok(branch)
+    }
+
     pub fn parse_url(url: &str) -> Result<Self> {
         let path = if let Some(ssh_part) = url.split_terminator("@").last() {
             ssh_part

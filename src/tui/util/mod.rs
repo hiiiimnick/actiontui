@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, NaiveDateTime};
+use chrono::{DateTime, Local};
 use ratatui::{
     style::{Color, Style},
     text::Span,
@@ -48,18 +48,7 @@ pub fn map_optional_time_to_string(optional_time: Option<DateTime<Local>>) -> St
     String::default()
 }
 
-pub fn map_delta_time_to_duration(start_time: &str, end_time: &str) -> String {
-    let (Ok(start), Ok(end)) = (
-        DateTime::parse_from_rfc3339(start_time),
-        DateTime::parse_from_rfc3339(end_time),
-    ) else {
-        return String::new();
-    };
-
-    let duration = end
-        .signed_duration_since(start)
-        .max(chrono::Duration::zero());
-
+pub fn format_duration(duration: chrono::Duration) -> String {
     format!(
         "{}m {}s",
         duration.num_minutes(),
